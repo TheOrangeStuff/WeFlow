@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+tests/artifacts/
+tests/fixtures/volumes/
+.DS_Store
+WeFlow/core/_builtin_keys.py

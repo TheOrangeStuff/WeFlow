@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "WeFlow"
+version = "1.0.0"
+description = "Card in, photos out: verified copy, auto look, watermark and upload for event photographers."
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6-Essentials==6.12.0",
+    "Pillow==13.0.0",
+    "numpy==2.4.6",
+    "requests==2.34.2",
+    "requests-oauthlib==2.0.0",
+    "flickrapi==2.4.0",
+    "keyring==25.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.2.0",
+    "pytest-qt==4.5.0",
+    "ruff==0.17.4",
+    "mypy==2.4.1",
+    "types-requests==2.33.0.20261030",
+    "types-requests-oauthlib==2.0.0.20261006",
+]
+build = ["pyinstaller==6.22.3"]
+
+[project.gui-scripts]
+weflow = "WeFlow.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["WeFlow*"]
+
+[tool.setuptools.package-data]
+WeFlow = ["assets/icons/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+# SIM112: the spec names the env vars WeFlow_FAKE_VOLUMES / WeFlow_DATA_DIR.
+ignore = ["SIM112", "SIM102"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["WeFlow/core"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyside6"
