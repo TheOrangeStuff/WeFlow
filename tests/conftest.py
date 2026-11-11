@@ -132,3 +132,35 @@ def make_pipeline(store: Store, recorder: Recorder) -> Iterator[PipelineFactory]
     yield factory
     for pipeline in made:
         pipeline.stop(timeout=5)
+
+
+# ------------------------------------------------------------------ UI fixtures
+@pytest.fixture
+def fake_uploader() -> FakeUploader:
+    return FakeUploader()
+
+
+@pytest.fixture
+def bridge(
+    qapp: object, store: Store, fake_uploader: FakeUploader, monkeypatch: pytest.MonkeyPatch
+):  # type: ignore[no-untyped-def]
+    from WeFlow.ui import theme as theme_module
+    from WeFlow.ui.bridge import Bridge
+
+    monkeypatch.setenv("WeFlow_NO_MOTION", "1")
+    theme_module.install(qapp)  # type: ignore[arg-type]
+    theme_module.theme.set_scheme("light")
+    made = Bridge(store, uploader_factory=lambda destination: fake_uploader, watch_interval=0.05)
+    yield made
+    made.shutdown()
+
+
+@pytest.fixture
+def window(qtbot, bridge, event: Profile):  # type: ignore[no-untyped-def]
+    from WeFlow.ui.main_window import MainWindow
+
+    win = MainWindow(bridge)
+    qtbot.addWidget(win)
+    win.show()
+    qtbot.waitExposed(win)
+    return win
