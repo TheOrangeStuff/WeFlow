@@ -18,7 +18,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
 
-from . import imaging, ingest
+from . import imaging, ingest, naming
 from .config import Profile, Store
 from .events import BatchUpdated, Emit, Event, Notice
 from .state import Batch, EventState, PhotoRecord
@@ -188,7 +188,7 @@ class Pipeline:
                 stage = photo.failed_stage
                 if stage != "process" and not photo.remote_id:
                     # Nothing uploaded yet; redo processing if its output is gone.
-                    if not (state.processed / photo.name).is_file():
+                    if not (state.processed / photo.processed_name).is_file():
                         stage = "process"
                 photo.attempts, photo.error, photo.failed_stage = 0, "", ""
                 photo.status = "copied" if stage == "process" else "processed"
@@ -422,7 +422,14 @@ class Pipeline:
                     batch.skipped += 1
                 else:
                     state.put_photo(
-                        PhotoRecord(copied.name, copied.sha256, copied.captured, batch.id)
+                        PhotoRecord(
+                            copied.name,
+                            copied.sha256,
+                            copied.captured,
+                            batch.id,
+                            original=copied.original,
+                            seq=state.next_seq(),
+                        )
                     )
                     names.append(copied.name)
                     batch.copied += 1
@@ -469,10 +476,11 @@ class Pipeline:
         event, state, photo, batch = found
         if photo.status != "copied":
             return
+        self._name_output(event, state, photo)
         try:
             imaging.process_file(
                 state.originals / photo.name,
-                state.processed / photo.name,
+                state.processed / photo.processed_name,
                 event,
                 self._budget.reserve,
             )
@@ -492,6 +500,21 @@ class Pipeline:
             if upload and not photo.held:
                 self._enqueue("upload", task[0], photo.name)
         self._touch(batch.id)
+
+    @staticmethod
+    def _name_output(event: Profile, state: EventState, photo: PhotoRecord) -> None:
+        """Fix the processed copy's name the first time the photo is processed."""
+        if photo.output:
+            return
+        with state.lock:
+            if not photo.seq:  # imported before 1.2.0
+                photo.seq = state.next_seq()
+            stem = naming.output_stem(event, photo.name, photo.original, photo.captured, photo.seq)
+            if event.file_naming == "import":
+                photo.output = photo.name
+            else:
+                photo.output = naming.unique_name(stem, state.output_taken)
+            state.put_photo(photo)
 
     # ------------------------------------------------------------- uploading
     def _upload_loop(self) -> None:
@@ -527,7 +550,7 @@ class Pipeline:
         try:
             uploader = self._uploader(batch.destination)
             if not photo.remote_id:  # FR-32: a stored remote_id is never uploaded again
-                photo.remote_id = uploader.upload(state.processed / photo.name, event)
+                photo.remote_id = uploader.upload(state.processed / photo.processed_name, event)
                 state.put_photo(photo)
                 stage = "album"
             uploader.add_to_album(photo.remote_id, event)

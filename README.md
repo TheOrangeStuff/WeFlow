@@ -66,7 +66,14 @@ A new event starts as a copy of the current one.
   look through the photos before they go up.
 - **Look:** auto white balance (with a strength slider) and auto tone.
 - **Watermark:** a PNG file, its corner, size and opacity.
-- **More:** JPEG quality, resize, watermark margin.
+- **Export:** how the finished photos are named, their JPEG quality (0–100), and an
+  optional **Limit file size**. With a limit, WeFlow uses the best quality that fits.
+  - **File naming:** Import name (the default), Custom name - Sequence, Custom name,
+    Date - Filename, Filename, or Filename - Sequence. Custom text left empty uses the
+    event name. Each photo's name is fixed the first time it is processed.
+  - **Preset:** save these export settings under a name, then pick the preset in any
+    event, new or old. Saving with an existing name replaces that preset.
+- **More:** resize, watermark margin.
 
 Choose a sample photo to see a live before/after preview; drag the line to compare.
 
@@ -76,7 +83,7 @@ Choose a sample photo to see a live before/after preview; drag the line to compa
 
 ```
 <Library>/<event>/originals/    exact, verified copies from the card (renamed by date)
-<Library>/<event>/processed/    finished photos: look applied, watermark added
+<Library>/<event>/processed/    finished photos: look applied, watermark added, named by Export
 ```
 
 Deleting an event in WeFlow never deletes its photos.

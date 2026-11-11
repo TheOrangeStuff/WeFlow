@@ -21,6 +21,25 @@ APP_NAME = "WeFlow"
 DESTINATIONS = ("none", "smugmug", "flickr")
 FLICKR_PRIVACY = ("private", "friends", "family", "friends+family", "public")
 WATERMARK_POSITIONS = ("tl", "tr", "center", "bl", "br")
+# How processed copies are named (Lightroom-style). "import" keeps the import name (FR-13).
+FILE_NAMING = (
+    "import",
+    "custom_seq",
+    "custom",
+    "date_filename",
+    "filename",
+    "filename_seq",
+)
+FILE_SIZE_KB_MIN, FILE_SIZE_KB_MAX = 10, 100_000
+# The event settings an export preset holds.
+EXPORT_FIELDS = (
+    "file_naming",
+    "custom_name",
+    "start_number",
+    "jpeg_quality",
+    "limit_file_size",
+    "file_size_kb",
+)
 
 # Secret-bearing keys a v0.1 settings.json may contain -> keyring names.
 LEGACY_SECRET_KEYS = {
@@ -107,6 +126,11 @@ class Profile:
     max_long_edge: int = 0
     jpeg_quality: int = 92
     hold_uploads: bool = False
+    file_naming: str = "import"
+    custom_name: str = ""  # empty: use the event name
+    start_number: int = 1
+    limit_file_size: bool = False
+    file_size_kb: int = 500  # K = 1000 bytes
 
     def keyword_list(self) -> list[str]:
         return [k.strip() for k in self.keywords.split(",") if k.strip()]
@@ -134,11 +158,44 @@ class Profile:
                 errors["watermark_path"] = "The watermark must be a PNG file."
         if self.watermark_position not in WATERMARK_POSITIONS:
             errors["watermark_position"] = "Choose a corner or the center."
-        if not 60 <= self.jpeg_quality <= 100:
-            errors["jpeg_quality"] = "Quality must be between 60 and 100."
+        if not 0 <= self.jpeg_quality <= 100:
+            errors["jpeg_quality"] = "Quality must be between 0 and 100."
+        if self.file_naming not in FILE_NAMING:
+            errors["file_naming"] = "Choose how files should be named."
+        if self.start_number < 0:
+            errors["start_number"] = "Start at 0 or higher."
+        if self.limit_file_size and not (FILE_SIZE_KB_MIN <= self.file_size_kb <= FILE_SIZE_KB_MAX):
+            errors["file_size_kb"] = (
+                f"Use a size between {FILE_SIZE_KB_MIN} K and {FILE_SIZE_KB_MAX:,} K."
+            )
         if self.max_long_edge < 0:
             errors["max_long_edge"] = "Use 0 for full size, or a size in pixels."
         return errors
+
+
+@dataclass
+class ExportPreset:
+    """Saved export settings (naming, quality, size limit) to reuse across events."""
+
+    id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    name: str = ""
+    file_naming: str = "import"
+    custom_name: str = ""
+    start_number: int = 1
+    jpeg_quality: int = 92
+    limit_file_size: bool = False
+    file_size_kb: int = 500
+
+    @classmethod
+    def from_event(cls, name: str, event: Profile) -> ExportPreset:
+        return cls(name=name, **{f: getattr(event, f) for f in EXPORT_FIELDS})
+
+    def apply(self, event: Profile) -> Profile:
+        """A copy of ``event`` with this preset's export settings."""
+        return replace(event, **{f: getattr(self, f) for f in EXPORT_FIELDS})
+
+    def matches(self, event: Profile) -> bool:
+        return all(getattr(self, f) == getattr(event, f) for f in EXPORT_FIELDS)
 
 
 def _from_dict(cls: type[Any], data: dict[str, Any]) -> Any:
@@ -157,6 +214,7 @@ class Store:
         self.data_dir = data_dir or app_data_dir()
         self.settings = Settings()
         self._events: dict[str, Profile] = {}
+        self._presets: dict[str, ExportPreset] = {}
         self._lock = threading.RLock()
         self._write_lock = threading.Lock()
         self.saver: Callable[[Callable[[], None]], object] = lambda job: job()
@@ -170,8 +228,12 @@ class Store:
     def events_path(self) -> Path:
         return self.data_dir / "events.json"
 
+    @property
+    def presets_path(self) -> Path:
+        return self.data_dir / "presets.json"
+
     def load(self) -> None:
-        """Read both files. Missing or damaged files fall back to defaults."""
+        """Read the files. Missing or damaged files fall back to defaults."""
         with self._lock:
             raw = _read_json(self.settings_path)
             migrated = False
@@ -192,6 +254,14 @@ class Store:
                     self._events[profile.id] = profile
             if self.settings.active_event_id not in self._events:
                 self.settings.active_event_id = ""
+            self._presets = {}
+            presets = _read_json(self.presets_path)
+            if isinstance(presets, list):
+                for item in presets:
+                    if isinstance(item, dict):
+                        with contextlib.suppress(TypeError):
+                            preset: ExportPreset = _from_dict(ExportPreset, item)
+                            self._presets[preset.id] = preset
         if migrated:
             self.save_settings()
         if fixed:
@@ -206,6 +276,11 @@ class Store:
         with self._lock:
             text = json.dumps([asdict(e) for e in self._events.values()], indent=2)
         self.saver(lambda: self._write(self.events_path, text))
+
+    def save_presets(self) -> None:
+        with self._lock:
+            text = json.dumps([asdict(p) for p in self._presets.values()], indent=2)
+        self.saver(lambda: self._write(self.presets_path, text))
 
     def _write(self, path: Path, text: str) -> None:
         with self._write_lock:
@@ -325,6 +400,34 @@ class Store:
         self.save_events()
         if was_active:
             self.save_settings()
+
+    # -------------------------------------------------------------- presets
+    def presets(self) -> list[ExportPreset]:
+        """Export presets, sorted by name."""
+        with self._lock:
+            found = [replace(p) for p in self._presets.values()]
+        return sorted(found, key=lambda p: p.name.casefold())
+
+    def save_preset(self, name: str, event: Profile) -> ExportPreset:
+        """Save ``event``'s export settings as a preset; a preset of the same name is replaced."""
+        name = name.strip()
+        if not name:
+            raise ValueError("a preset needs a name")
+        with self._lock:
+            same = next(
+                (p for p in self._presets.values() if p.name.casefold() == name.casefold()), None
+            )
+            preset = ExportPreset.from_event(name, event)
+            if same is not None:
+                preset.id = same.id
+            self._presets[preset.id] = preset
+        self.save_presets()
+        return replace(preset)
+
+    def delete_preset(self, preset_id: str) -> None:
+        with self._lock:
+            self._presets.pop(preset_id, None)
+        self.save_presets()
 
 
 def _read_json(path: Path) -> Any:

@@ -177,3 +177,41 @@ def test_render_does_not_change_its_input(tmp_path: Path) -> None:
     img = Image.new("RGB", (300, 200), (10, 20, 30))
     imaging.render(img, Profile(name="w", auto_wb=False, auto_tone=False, watermark=True), mark)
     assert img.getpixel((299, 199)) == (10, 20, 30)
+
+
+def test_fr27_limit_file_size_ignores_quality_and_fits(tmp_path: Path) -> None:
+    source = tmp_path / "in.jpg"
+    save_photo(source, 4, size=(1200, 800))
+    free, limited = tmp_path / "free.jpg", tmp_path / "limited.jpg"
+    imaging.process_file(source, free, Profile(name="f", jpeg_quality=100))
+    limit_kb = free.stat().st_size // 3000  # about a third of the size
+    event = Profile(name="l", jpeg_quality=100, limit_file_size=True, file_size_kb=limit_kb)
+    imaging.process_file(source, limited, event)
+    assert limited.stat().st_size <= limit_kb * 1000
+    assert limited.stat().st_size > limit_kb * 1000 * 0.6  # highest quality that fits
+    with Image.open(limited) as img:
+        assert img.size == (1200, 800) and img.getexif().get(imaging.ORIENTATION) == 1
+    assert not list(tmp_path.glob(".tmp-*"))
+
+
+def test_fr27_impossible_limit_still_writes_smallest(tmp_path: Path) -> None:
+    source = tmp_path / "in.jpg"
+    save_photo(source, 4, size=(1200, 800))
+    target, normal = tmp_path / "out.jpg", tmp_path / "normal.jpg"
+    limited = Profile(name="t", auto_wb=False, auto_tone=False, limit_file_size=True)
+    limited.file_size_kb = 10
+    imaging.process_file(source, target, limited)
+    imaging.process_file(source, normal, PLAIN)
+    with Image.open(source) as img:
+        lowest = imaging.encode_jpeg(img.convert("RGB"), 0, {})
+    assert len(lowest) > 10_000  # the limit really cannot be met
+    assert target.is_file() and target.stat().st_size < normal.stat().st_size / 3
+
+
+def test_fr27_quality_accepts_full_lightroom_range(tmp_path: Path) -> None:
+    source = tmp_path / "in.jpg"
+    save_photo(source, 4, size=(600, 400))
+    low = tmp_path / "low.jpg"
+    imaging.process_file(source, low, Profile(name="q", jpeg_quality=5))
+    assert Profile(name="q", jpeg_quality=0).validate() == {}
+    assert low.stat().st_size < source.stat().st_size

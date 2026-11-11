@@ -43,6 +43,13 @@ class PhotoRecord:
     held: bool = False
     attempts: int = 0
     error: str = ""
+    original: str = ""  # the camera's file name, without extension
+    seq: int = 0  # 1-based import order within the event; 0 = not given yet
+    output: str = ""  # processed file name, fixed when first processed; "" = ``name``
+
+    @property
+    def processed_name(self) -> str:
+        return self.output or self.name
 
 
 @dataclass
@@ -90,6 +97,8 @@ class EventState:
         self.state_path = self.dir / "state.json"
         self.journal_path = self.dir / "journal.jsonl"
         self.photos: dict[str, PhotoRecord] = {}
+        self._outputs: set[str] = set()  # processed names in use, casefolded
+        self._last_seq = 0
         self.batches: dict[int, Batch] = {}
         self.lock = threading.RLock()
         self._journal: IO[str] | None = None
@@ -129,7 +138,7 @@ class EventState:
         try:
             if "photo" in entry:
                 photo: PhotoRecord = _load_into(PhotoRecord, entry["photo"])
-                self.photos[photo.name] = photo
+                self._remember(photo)
             elif "batch" in entry:
                 batch: Batch = _load_into(Batch, entry["batch"])
                 self.batches[batch.id] = batch
@@ -147,9 +156,26 @@ class EventState:
         if self._pending >= COMPACT_EVERY:
             self.compact()
 
+    def _remember(self, photo: PhotoRecord) -> None:
+        self.photos[photo.name] = photo
+        if photo.output:
+            self._outputs.add(photo.output.casefold())
+        self._last_seq = max(self._last_seq, photo.seq)
+
+    def next_seq(self) -> int:
+        """The next import-order number for this event."""
+        with self.lock:
+            self._last_seq += 1
+            return self._last_seq
+
+    def output_taken(self, name: str) -> bool:
+        """True when another photo's processed copy already uses ``name``."""
+        with self.lock:
+            return name.casefold() in self._outputs or (self.processed / name).exists()
+
     def put_photo(self, photo: PhotoRecord) -> None:
         with self.lock:
-            self.photos[photo.name] = photo
+            self._remember(photo)
             self._append({"photo": asdict(photo)})
 
     def put_batch(self, batch: Batch) -> None:

@@ -13,7 +13,7 @@ from WeFlow.core import ingest
 from WeFlow.core.config import Profile, Store
 from WeFlow.core.events import BatchUpdated
 from WeFlow.core.pipeline import MAX_ATTEMPTS, Pipeline, retry_delay
-from WeFlow.core.state import EventState
+from WeFlow.core.state import Batch, EventState, PhotoRecord
 from WeFlow.core.uploaders import FakeUploader, UploadError
 
 NEW_PHOTOS = 7  # an 8-file fake card holds one duplicate
@@ -438,3 +438,74 @@ def test_nfr06_keychain_failure_is_plain_and_permanent(
         with pytest.raises(UploadError) as caught:
             uploader.upload(tmp_path / "a.jpg", Profile(name="G", album="KEY"))
         assert caught.value.permanent and "keychain" in caught.value.message
+
+
+def test_fr26_processed_copies_and_uploads_use_the_naming_rule(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    event = flickr_event(store, file_naming="custom_seq", custom_name="Smith Wedding")
+    fake = FakeUploader()
+    pipeline = make_pipeline(fake)
+    batch = pipeline.submit(card, event, "CARD_A", is_card=True)
+    recorder.wait_state(batch.id, "done")
+    root = store.event_root(event)
+    expected = [f"Smith-Wedding-{n:04d}.jpg" for n in range(1, NEW_PHOTOS + 1)]
+    assert sorted(p.name for p in (root / "processed").iterdir()) == expected
+    assert sorted(fake.uploads) == expected
+    assert all(p.name.startswith("Gala_2026") for p in (root / "originals").iterdir())
+    records = sorted(photos(store, event).photos.values(), key=lambda p: p.seq)
+    assert [p.seq for p in records] == list(range(1, NEW_PHOTOS + 1))
+    assert all(p.original and p.original in p.name for p in records)  # card name kept
+
+
+def test_fr26_name_is_fixed_once_processed(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    """Changing the rule mid-event never renames photos that already have a name."""
+    event = flickr_event(store, file_naming="filename_seq")
+    fake = FakeUploader(album_fail_times=NEW_PHOTOS, permanent=True)
+    pipeline = make_pipeline(fake)
+    batch = pipeline.submit(card, event, "CARD_A", is_card=True)
+    recorder.wait_state(batch.id, "attention")
+    names = {p.name: p.output for p in photos(store, event).photos.values()}
+    event.file_naming = "custom"
+    store.update_event(event)
+    pipeline.retry_failed(event.id)
+    recorder.wait(lambda: recorder.batches(batch.id)[-1].state == "done")
+    assert {p.name: p.output for p in photos(store, event).photos.values()} == names
+    assert fake.upload_calls == NEW_PHOTOS
+
+
+def test_fr26_custom_name_collisions_and_old_photos(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    event = flickr_event(store, file_naming="custom", custom_name="Gala")
+    fake = FakeUploader()
+    pipeline = make_pipeline(fake)
+    batch = pipeline.submit(card, event, "CARD_A", is_card=True)
+    recorder.wait_state(batch.id, "done")
+    processed = sorted(p.name for p in (store.event_root(event) / "processed").iterdir())
+    assert processed == sorted(["Gala.jpg"] + [f"Gala-{n}.jpg" for n in range(2, NEW_PHOTOS + 1)])
+    assert len(set(fake.uploads)) == NEW_PHOTOS
+
+
+def test_fr26_photos_imported_before_keep_working(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    """A 1.1.0 record (no output, seq or original) is named and uploaded on resume."""
+    event = flickr_event(store, file_naming="filename")
+    state = photos(store, event)
+    state.originals.mkdir(parents=True)
+    name = "Gala_20261111-143000_DSC_0007.jpg"
+    shutil.copy(ingest.list_jpegs(card)[0], state.originals / name)
+    state.put_batch(
+        Batch(id=1, event_id=event.id, destination="flickr", state="processing", verified=True)
+    )
+    state.put_photo(PhotoRecord(name, "abc", "2026-11-11T14:30:00", 1))
+    state.close()
+    fake = FakeUploader()
+    pipeline = make_pipeline(fake)
+    pipeline.resume()
+    recorder.wait_state(1, "done")
+    assert fake.uploads == ["DSC_0007.jpg"]
+    assert photos(store, event).photos[name].seq == 1

@@ -164,6 +164,36 @@ owner and accepted on 2026-11-11.
     1.0.0 has no update check, so no Intel Mac is ever offered an update it cannot run.
     **(owner's choice)**
 
+## 1.2.0 — export settings and presets
+
+41. **New requirements FR-26 (file naming), FR-27 (quality, file-size limit) and FR-28
+    (export presets)** were added to SPEC.md at the owner's request. Resize options beyond
+    the existing long edge were offered and declined. **(owner's choice)**
+42. **Naming applies to processed copies only.** Originals keep their FR-13 import name,
+    so they still trace back to the card. **(owner's choice)**
+43. **A Lightroom-style list of naming rules**, not a free-form pattern. **(owner's choice)**
+44. **Presets hold export settings only** (naming, custom text, start number, quality,
+    size limit), stored in `<app-data>/presets.json`. Events do not remember which preset
+    they came from; the editor shows the preset whose settings match, else "No preset".
+    **(owner's choice)**
+45. **A processed name is fixed when first processed** and stored as `PhotoRecord.output`,
+    because the upload, retry and resume steps all look the file up by it. Photos from
+    1.1.0 have no `output`, `seq` or `original`. They keep working: an empty `output`
+    means the import name, `seq` is given on first processing, and the card name is
+    recovered from the import name.
+46. **Sequence = import order within the event** (card order, which follows the camera's
+    numbering), not processing order, which varies with parallel workers.
+47. **Empty custom text uses the event name**, so one preset suits every event.
+48. **Quality range widened from 60–100 to 0–100** to match Lightroom.
+49. **"K" means 1000 bytes**, so a file is under the limit whichever way a site counts.
+    If no quality fits, the quality-0 version is written and a warning logged; failing the
+    photo would hold up the upload over a soft limit.
+50. **The size limit costs up to 7 extra encodes per photo** (a binary search on
+    quality), so NFR-03's 1 s per 24 MP photo may not hold while it is on. Not measured.
+51. **Number fields get text margins in code.** Fusion ignores `QSpinBox` padding from
+    the stylesheet, so the text sat against the border. This also fixes the existing
+    resize field.
+
 ## Not verified yet
 
 These need hardware, accounts or other operating systems (see `docs/manual-test.md`):

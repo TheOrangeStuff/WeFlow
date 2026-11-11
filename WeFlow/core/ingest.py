@@ -39,6 +39,7 @@ class Copied:
     name: str
     sha256: str
     captured: str  # ISO date-time
+    original: str = ""  # the card's file name, without extension
 
 
 def list_jpegs(source: Path) -> list[Path]:
@@ -146,7 +147,12 @@ def ingest_file(
             temp.unlink()
         raise CopyError("A photo could not be saved on this computer.") from exc
     known_hashes.add(sha)
-    return Copied(name=name, sha256=sha, captured=captured.isoformat(timespec="seconds"))
+    return Copied(
+        name=name,
+        sha256=sha,
+        captured=captured.isoformat(timespec="seconds"),
+        original=source.stem,
+    )
 
 
 def sync_dir(folder: Path) -> None:

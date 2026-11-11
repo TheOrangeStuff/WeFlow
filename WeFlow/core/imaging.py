@@ -7,6 +7,8 @@ thumbnail and applied to the full image in one pass.
 from __future__ import annotations
 
 import contextlib
+import io
+import logging
 import math
 import os
 import threading
@@ -20,6 +22,7 @@ from PIL import Image
 
 from .config import Profile
 
+log = logging.getLogger("WeFlow.imaging")
 Floats = NDArray[np.float32]
 Reserve = Callable[[int], AbstractContextManager[None]]
 
@@ -218,10 +221,15 @@ def process_file(
             del img
             exif[ORIENTATION] = 1
             target.parent.mkdir(parents=True, exist_ok=True)
-            options: dict[str, object] = {"quality": profile.jpeg_quality, "exif": exif.tobytes()}
+            options: dict[str, object] = {"exif": exif.tobytes()}
             if icc:
                 options["icc_profile"] = icc
-            out.save(temp, "JPEG", **options)
+            if profile.limit_file_size:
+                data = encode_within(out, profile.file_size_kb * 1000, options)
+                with open(temp, "wb") as fh:
+                    fh.write(data)
+            else:
+                out.save(temp, "JPEG", quality=profile.jpeg_quality, **options)
         os.replace(temp, target)
     except ProcessError:
         raise
@@ -229,6 +237,37 @@ def process_file(
         with contextlib.suppress(OSError):
             temp.unlink()
         raise ProcessError("This photo could not be processed. It may be damaged.") from exc
+
+
+def encode_jpeg(img: Image.Image, quality: int, options: dict[str, object]) -> bytes:
+    buffer = io.BytesIO()
+    img.save(buffer, "JPEG", quality=quality, **options)
+    return buffer.getvalue()
+
+
+def encode_within(img: Image.Image, limit: int, options: dict[str, object]) -> bytes:
+    """The highest-quality JPEG of ``img`` that fits in ``limit`` bytes.
+
+    Like Lightroom's "Limit File Size To", the quality setting is ignored. When even
+    the lowest quality is too big, that smallest version is used.
+    """
+    low, high = 0, 100
+    best: bytes | None = None
+    smallest: bytes | None = None
+    while low <= high:
+        quality = (low + high) // 2
+        data = encode_jpeg(img, quality, options)
+        if len(data) <= limit:
+            best, low = data, quality + 1
+        else:
+            if smallest is None or len(data) < len(smallest):
+                smallest = data
+            high = quality - 1
+    if best is not None:
+        return best
+    log.warning("could not fit a photo in %d bytes; using the lowest quality", limit)
+    assert smallest is not None
+    return smallest
 
 
 @contextlib.contextmanager

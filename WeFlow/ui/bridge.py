@@ -18,11 +18,15 @@ from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QImage
 
 from WeFlow import __version__
-from WeFlow.core import autostart, cards, imaging, secrets, updates, uploaders
+from WeFlow.core import autostart, cards, imaging, naming, secrets, updates, uploaders
 from WeFlow.core.config import (
     DESTINATIONS,
+    FILE_NAMING,
+    FILE_SIZE_KB_MAX,
+    FILE_SIZE_KB_MIN,
     FLICKR_PRIVACY,
     WATERMARK_POSITIONS,
+    ExportPreset,
     Profile,
     Settings,
     Store,
@@ -39,11 +43,15 @@ from WeFlow.core.uploaders import PendingAuth, Uploader, UploadError, service_na
 __all__ = [
     "ACTIVE_STATES",
     "DESTINATIONS",
+    "FILE_NAMING",
+    "FILE_SIZE_KB_MAX",
+    "FILE_SIZE_KB_MIN",
     "FLICKR_PRIVACY",
     "SERVICES",
     "WATERMARK_POSITIONS",
     "Batch",
     "Bridge",
+    "ExportPreset",
     "PendingAuth",
     "Profile",
     "Settings",
@@ -202,6 +210,21 @@ class Bridge(QObject):
             saved = self.store.update_event(event)
         self.events_changed.emit()
         return saved
+
+    # --------------------------------------------------------------- presets
+    def presets(self) -> list[ExportPreset]:
+        return self.store.presets()
+
+    def save_preset(self, name: str, event: Profile) -> ExportPreset:
+        return self.store.save_preset(name, event)
+
+    def delete_preset(self, preset_id: str) -> None:
+        self.store.delete_preset(preset_id)
+
+    @staticmethod
+    def example_file_name(event: Profile) -> str:
+        """What the event's first processed photo would be called (no I/O)."""
+        return naming.example(event)
 
     def duplicate_event(self, event_id: str) -> Profile:
         copy = self.store.duplicate_event(event_id)

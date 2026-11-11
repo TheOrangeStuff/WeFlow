@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.0 — 2026-11-11
+
+- Name your finished photos the Lightroom way: custom name with a sequence number, date
+  and filename, the camera's filename, and more. Find it under **Export** when you edit
+  an event. Originals keep their names.
+- Quality now goes from 0 to 100, like Lightroom.
+- New **Limit file size**: WeFlow picks the best quality that keeps each photo under the
+  size you set.
+- Save your export settings as a **preset** and pick it in any event.
+- Photos already processed keep their names. Your events, settings and sign-ins carry
+  over unchanged.
+
 ## 1.1.0 — 2026-11-11
 
 - WeFlow tells you when a newer version is out. A bar in the main window offers

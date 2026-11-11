@@ -382,3 +382,79 @@ def test_first_run_three_steps_then_event_exists(qtbot, qapp, tmp_path, monkeypa
         )
     finally:
         bridge.shutdown()
+
+
+# ---------------------------------------------------------- export and presets
+def test_fr26_fr27_export_fields_show_only_when_they_apply(
+    qtbot, window, bridge, store, event
+) -> None:  # type: ignore[no-untyped-def]
+    editor = EventEditor(bridge, bridge.active(), window)
+    qtbot.addWidget(editor)
+    editor.show()
+    assert editor.naming.currentData() == "import"
+    assert not editor.custom_field.isVisible() and not editor.start_field.isVisible()
+    assert editor.example.text() == "Example: Test-Event_20261111-143000_DSC_0001.jpg"
+    editor.naming.setCurrentIndex(editor.naming.findData("custom_seq"))
+    assert editor.custom_field.isVisible() and editor.start_field.isVisible()
+    assert editor.custom_name.placeholderText() == "Test Event"
+    assert editor.example.text() == "Example: Test-Event-0001.jpg"
+    editor.custom_name.setText("Smith Wedding")
+    editor.start_number.setValue(50)
+    assert editor.example.text() == "Example: Smith-Wedding-0050.jpg"
+
+    assert editor.quality.isEnabled() and not editor.size_field.isVisible()
+    editor.limit_size.setChecked(True)
+    assert not editor.quality.isEnabled() and editor.size_field.isVisible()
+    editor.size_kb.setValue(800)
+    qtbot.mouseClick(editor.save, Qt.MouseButton.LeftButton)
+    saved = store.get(event.id)
+    assert (saved.file_naming, saved.custom_name, saved.start_number) == (
+        "custom_seq",
+        "Smith Wedding",
+        50,
+    )
+    assert (saved.limit_file_size, saved.file_size_kb) == (True, 800)
+
+
+def test_fr28_save_and_use_a_preset_in_a_new_event(qtbot, window, bridge, store, event) -> None:  # type: ignore[no-untyped-def]
+    editor = EventEditor(bridge, bridge.active(), window)
+    qtbot.addWidget(editor)
+    editor.show()
+    assert editor.preset.currentText() == "No preset"
+    assert editor.preset_action.text() == "Save as preset…"
+    editor.naming.setCurrentIndex(editor.naming.findData("custom_seq"))
+    editor.quality.setValue(75)
+    qtbot.mouseClick(editor.preset_action, Qt.MouseButton.LeftButton)
+    assert editor.preset_namer.isVisible()
+    editor.preset_name.setText("Web")
+    qtbot.mouseClick(editor.preset_save, Qt.MouseButton.LeftButton)
+    assert [p.name for p in store.presets()] == ["Web"]
+    assert editor.preset.currentText() == "Web" and editor.preset_action.text() == "Delete preset"
+    editor.quality.setValue(76)  # no longer matches
+    assert editor.preset.currentText() == "No preset"
+    editor.reject()
+
+    fresh = EventEditor(bridge, bridge.draft_event(), window)
+    qtbot.addWidget(fresh)
+    fresh.show()
+    fresh.preset.setCurrentIndex(fresh.preset.findText("Web"))
+    fresh.preset.activated.emit(fresh.preset.currentIndex())
+    assert fresh.naming.currentData() == "custom_seq" and fresh.quality.value() == 75
+    fresh.name.setText("Jones Party")
+    qtbot.mouseClick(fresh.save, Qt.MouseButton.LeftButton)
+    assert fresh.saved is not None and fresh.saved.jpeg_quality == 75
+    assert fresh.saved.file_naming == "custom_seq"
+
+
+def test_fr28_delete_preset_takes_two_clicks(qtbot, window, bridge, store, event) -> None:  # type: ignore[no-untyped-def]
+    store.save_preset("Web", event)  # matches the event as it is
+    editor = EventEditor(bridge, bridge.active(), window)
+    qtbot.addWidget(editor)
+    editor.show()
+    assert editor.preset.currentText() == "Web"
+    qtbot.mouseClick(editor.preset_action, Qt.MouseButton.LeftButton)
+    assert editor.preset_action.text() == "Really delete?" and store.presets()
+    qtbot.mouseClick(editor.preset_action, Qt.MouseButton.LeftButton)
+    assert store.presets() == [] and editor.preset.count() == 1
+    assert editor.preset_action.text() == "Save as preset…"
+    shoot(editor, "event-editor-export")

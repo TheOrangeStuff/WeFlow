@@ -94,8 +94,12 @@ Fields carry over from v0.1 `Profile`, with these changes:
 | `auto_tone` | bool | true | |
 | `watermark` + `watermark_path/position/scale/opacity/margin` | | as v0.1 | |
 | `max_long_edge` | int | 0 | 0 = full size |
-| `jpeg_quality` | int 60–100 | 92 | |
+| `jpeg_quality` | int 0–100 | 92 | Lightroom's range (1.2.0; was 60–100) |
 | `hold_uploads` | bool | false | |
+| `file_naming` | `"import" \| "custom_seq" \| "custom" \| "date_filename" \| "filename" \| "filename_seq"` | `"import"` | FR-26 (1.2.0) |
+| `custom_name` | str | `""` | Empty = event name |
+| `start_number` | int ≥ 0 | 1 | First sequence number |
+| `limit_file_size` / `file_size_kb` | bool / int 10–100000 | false / 500 | FR-27; K = 1000 bytes |
 
 ### 4.2 Batch
 One card insertion (or folder import). Fields as v0.1 `Batch`, plus a `state` enum:
@@ -103,9 +107,11 @@ One card insertion (or folder import). Fields as v0.1 `Batch`, plus a `state` en
 
 ### 4.3 Photo record (persisted per event in `.WeFlow/state.json`)
 `name, sha256, captured, batch_id, status (copied|processed|uploaded|failed), failed_stage, remote_id, held, attempts, error`.
+From 1.2.0 also `original` (card file name, no extension), `seq` (1-based import order in the event) and `output` (processed file name; empty = `name`).
 
 ### 4.4 Persistence
 - Settings and events: `<app-data>/settings.json`, `<app-data>/events.json` (atomic writes).
+- Export presets (FR-28): `<app-data>/presets.json` (atomic writes).
 - Secrets (API keys and secrets, OAuth tokens): **keyring only**, under the service name `WeFlow`.
 - On first launch, migrate any v0.1 secrets found in `settings.json` into keyring, then blank them out.
 - Library on disk:
@@ -154,6 +160,12 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
   - Preserve the rest of the EXIF data, and the ICC profile when the source is RGB.
 - **FR-24** Optional resize (Lanczos) and per-event JPEG quality.
 - **FR-25** Writes are atomic: write to `.tmp-<name>`, then rename. Run `min(4, cpu_count // 2)` processing workers.
+- **FR-26** *(1.2.0)* Processed copies are named by the event's File naming rule, Lightroom-style: Import name (FR-13, the default), Custom name - Sequence, Custom name, Date - Filename, Filename, Filename - Sequence.
+  - Sequence numbers have 4 digits, count from the start number, and follow import order within the event. "Filename" is the card's file name; "Date" is the capture date `YYYYMMDD`.
+  - Names are made safe on both OSes. A taken name gets `-2`, `-3`…
+  - The name is fixed the first time a photo is processed and stored on its record. Changing the rule later never renames a photo that has a name, so uploads and retries always find the file. Originals are never renamed by this rule.
+- **FR-27** *(1.2.0)* JPEG quality is 0–100. "Limit file size to N K" ignores quality and writes the highest quality that fits; if even quality 0 is too big, that smallest version is written.
+- **FR-28** *(1.2.0)* Export presets hold FR-26/27 settings (naming, custom text, start number, quality, size limit) under a name. Any event, new or existing, can pick one; saving with an existing name replaces it. Presets never hold destination, look or watermark settings.
 
 ### 5.4 Uploading
 - **FR-30** SmugMug: OAuth 1.0a out-of-band flow, with `Access=Full` and `Permissions=Add`.
@@ -234,11 +246,12 @@ The panel shows the most recent batch. The **4-step tracker** (Copy · Process �
 ### 7.4 Secondary screens
 
 - **Event editor** — a sheet (macOS) or dialog (Windows), 640 px wide.
-  - Left column holds 3 groups, each with a heading:
+  - Left column holds 4 groups, each with a heading:
     - **Destination:** where, album, privacy, keywords, hold toggle.
     - **Look:** auto WB with strength slider, auto tone.
     - **Watermark:** toggle, file picker with thumbnail, position as a 3×3 grid picker (corners + center only enabled), size slider, opacity slider.
-  - Rarely changed fields (JPEG quality, resize, margin) sit in a collapsed "More" section.
+    - **Export** *(1.2.0)*: preset picker (Save as preset… / Delete preset), file naming, custom text and start number (only when the rule uses them), an example file name, quality slider, Limit file size toggle and size.
+  - Rarely changed fields (resize, margin) sit in a collapsed "More" section.
   - Right column: before/after preview of the sample photo (FR-04), with a draggable split line.
   - Validate inline (red helper text under the field). The Save button is disabled until the form is valid.
 - **Settings:**

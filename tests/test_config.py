@@ -65,7 +65,7 @@ def test_event_names_are_unique(store: Store) -> None:
 
 def test_validate_plain_language() -> None:
     assert Profile(name="ok").validate() == {}
-    errors = Profile(name="", destination="smugmug", watermark=True, jpeg_quality=10).validate()
+    errors = Profile(name="", destination="smugmug", watermark=True, jpeg_quality=101).validate()
     assert set(errors) == {"name", "album", "watermark_path", "jpeg_quality"}
     assert "watermark_path" in Profile(name="x", watermark=True, watermark_path="a.jpg").validate()
 
@@ -154,3 +154,46 @@ def test_update_keeps_the_user_signed_in(
     )
     store.update_settings(seen_version="9.9.9")  # the new version saves its own settings
     assert memory_secrets.values == before  # and never touches the keychain
+
+
+def test_fr28_presets_save_apply_replace_delete(store: Store) -> None:
+    event = store.create_event("Gala")
+    event.file_naming, event.custom_name, event.jpeg_quality = "custom_seq", "", 80
+    event.limit_file_size, event.file_size_kb = True, 750
+    first = store.save_preset("Web", event)
+    assert [p.name for p in store.presets()] == ["Web"]
+
+    fresh = store.create_event("Next")  # a new event can use the preset
+    assert not first.matches(fresh)
+    applied = first.apply(fresh)
+    assert first.matches(applied) and applied.name == "Next" and applied.album == fresh.album
+    assert (applied.file_naming, applied.jpeg_quality, applied.file_size_kb) == (
+        "custom_seq",
+        80,
+        750,
+    )
+
+    event.jpeg_quality = 70
+    again = store.save_preset("web", event)  # same name: replaced, not duplicated
+    assert again.id == first.id and [p.jpeg_quality for p in store.presets()] == [70]
+    store.save_preset("Archive", Profile(name="x"))
+    assert [p.name for p in store.presets()] == ["Archive", "web"]
+
+    reloaded = Store(store.data_dir)
+    reloaded.load()
+    assert [(p.name, p.jpeg_quality) for p in reloaded.presets()] == [("Archive", 92), ("web", 70)]
+    reloaded.delete_preset(again.id)
+    assert [p.name for p in reloaded.presets()] == ["Archive"]
+
+
+def test_fr28_update_reads_older_events_and_presets_files(store: Store) -> None:
+    """Events saved by 1.1.0 load with the new export settings at their defaults."""
+    store.data_dir.mkdir(parents=True, exist_ok=True)
+    old = {"id": "abc", "name": "Old", "folder": "Old", "jpeg_quality": 88}
+    (store.data_dir / "events.json").write_text(json.dumps([old]))
+    (store.data_dir / "presets.json").write_text('[{"name": "Web", "future_field": 1}, 7]')
+    store.load()
+    event = store.get("abc")
+    assert event is not None and event.jpeg_quality == 88
+    assert (event.file_naming, event.limit_file_size, event.start_number) == ("import", False, 1)
+    assert [p.name for p in store.presets()] == ["Web"]

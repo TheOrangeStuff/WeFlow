@@ -1,4 +1,4 @@
-"""Event setup sheet: destination, look, watermark, and a live preview (§7.4, FR-04)."""
+"""Event setup sheet: destination, look, watermark, export, and a live preview (§7.4, FR-04)."""
 
 from __future__ import annotations
 
@@ -23,7 +23,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .bridge import FLICKR_PRIVACY, Bridge, Profile
+from .bridge import (
+    FILE_NAMING,
+    FILE_SIZE_KB_MAX,
+    FILE_SIZE_KB_MIN,
+    FLICKR_PRIVACY,
+    Bridge,
+    ExportPreset,
+    Profile,
+)
 from .theme import theme
 from .widgets.common import Button, Toggle, label, restyle
 
@@ -40,6 +48,17 @@ PRIVACY_LABELS = {
     "friends+family": "Friends and family",
     "public": "Anyone",
 }
+NAMING_LABELS = {
+    "import": "Import name",
+    "custom_seq": "Custom name - Sequence",
+    "custom": "Custom name",
+    "date_filename": "Date - Filename",
+    "filename": "Filename",
+    "filename_seq": "Filename - Sequence",
+}
+USES_CUSTOM = ("custom_seq", "custom")
+USES_SEQUENCE = ("custom_seq", "filename_seq")
+NO_PRESET = "No preset"
 GRID = {(0, 0): "tl", (0, 2): "tr", (1, 1): "center", (2, 0): "bl", (2, 2): "br"}
 POSITION_NAMES = {
     "tl": "Top left",
@@ -62,6 +81,18 @@ def field(caption: str, control: QWidget, error: QLabel | None = None) -> QWidge
         column.addWidget(error)
     control.setAccessibleName(caption)
     box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+    return box
+
+
+def number_box(low: int, high: int, value: int, suffix: str = "", step: int = 1) -> QSpinBox:
+    """A number field without arrows, padded like the text fields."""
+    box = QSpinBox()
+    box.setRange(low, high)
+    box.setSingleStep(step)
+    box.setSuffix(suffix)
+    box.setValue(value)
+    # Fusion ignores QSpinBox padding in the stylesheet; pad the text instead.
+    box.lineEdit().setTextMargins(7, 0, 7, 0)
     return box
 
 
@@ -111,6 +142,9 @@ class SliderRow(QWidget):
 
     def value(self) -> int:
         return self.slider.value()
+
+    def setValue(self, value: int) -> None:  # noqa: N802 - Qt naming
+        self.slider.setValue(value)
 
 
 class PositionPicker(QWidget):
@@ -302,15 +336,33 @@ class EventEditor(QDialog):
         self.size = SliderRow("Size", 5, 50, round(event.watermark_scale * 100))
         self.opacity = SliderRow("Opacity", 10, 100, round(event.watermark_opacity * 100))
 
-        self.quality = QSpinBox()
-        self.quality.setRange(60, 100)
-        self.quality.setValue(event.jpeg_quality)
-        self.resize_edge = QSpinBox()
-        self.resize_edge.setRange(0, 20000)
-        self.resize_edge.setSingleStep(100)
+        self._presets: list[ExportPreset] = []
+        self.preset = QComboBox()
+        self.preset_action = Button("Save as preset…", "quiet")
+        self.preset_action.clicked.connect(self._preset_action)
+        self.preset_name = QLineEdit()
+        self.preset_name.setPlaceholderText("Preset name")
+        self.preset_name.setAccessibleName("Preset name")
+        self.preset_save = Button("Save")
+        self.preset_save.clicked.connect(self._save_preset)
+        self.preset_name.returnPressed.connect(self._save_preset)
+        self.naming = QComboBox()
+        for value in FILE_NAMING:
+            self.naming.addItem(NAMING_LABELS[value], value)
+        self.naming.setCurrentIndex(max(0, FILE_NAMING.index(event.file_naming)))
+        self.custom_name = QLineEdit(event.custom_name)
+        self.custom_field = field("Custom text", self.custom_name)
+        self.start_number = number_box(0, 999_999, event.start_number)
+        self.start_field = field("Start number", self.start_number)
+        self.example = label("", "secondary", wrap=True)
+        self.quality = SliderRow("Quality", 0, 100, event.jpeg_quality, suffix="")
+        self.limit_size = Toggle(event.limit_file_size)
+        self.size_kb = number_box(
+            FILE_SIZE_KB_MIN, FILE_SIZE_KB_MAX, event.file_size_kb, " K", step=50
+        )
+        self.size_field = field("Limit file size to", self.size_kb)
+        self.resize_edge = number_box(0, 20000, event.max_long_edge, " px", step=100)
         self.resize_edge.setSpecialValueText("Full size")
-        self.resize_edge.setSuffix(" px")
-        self.resize_edge.setValue(event.max_long_edge)
         self.margin = SliderRow("Watermark margin", 0, 10, round(event.watermark_margin * 100))
 
         # --------------------------------------------------------------- left
@@ -355,6 +407,32 @@ class EventEditor(QDialog):
         wm.addLayout(place)
         left.addWidget(self.watermark_box)
         left.addSpacing(4)
+        left.addWidget(label("Export", "heading"))
+        presets = QHBoxLayout()
+        presets.setContentsMargins(0, 0, 0, 0)
+        presets.setSpacing(8)
+        presets.addWidget(self.preset, 1)
+        presets.addWidget(self.preset_action)
+        preset_box = QWidget()
+        preset_box.setLayout(presets)
+        left.addWidget(field("Preset", preset_box))
+        self.preset.setAccessibleName("Preset")
+        self.preset_namer = QWidget()
+        namer = QHBoxLayout(self.preset_namer)
+        namer.setContentsMargins(0, 0, 0, 0)
+        namer.setSpacing(8)
+        namer.addWidget(self.preset_name, 1)
+        namer.addWidget(self.preset_save)
+        self.preset_namer.hide()
+        left.addWidget(self.preset_namer)
+        left.addWidget(field("File naming", self.naming))
+        left.addWidget(self.custom_field)
+        left.addWidget(self.start_field)
+        left.addWidget(self.example)
+        left.addWidget(self.quality)
+        left.addWidget(toggle_row("Limit file size", self.limit_size))
+        left.addWidget(self.size_field)
+        left.addSpacing(4)
         self.more = Button("More", "quiet", icon="chevron-right", icon_token="text-2")
         self.more.clicked.connect(self._toggle_more)
         left.addWidget(self.more)
@@ -362,7 +440,6 @@ class EventEditor(QDialog):
         more = QVBoxLayout(self.more_box)
         more.setContentsMargins(0, 0, 0, 0)
         more.setSpacing(12)
-        more.addWidget(field("JPEG quality", self.quality))
         more.addWidget(field("Resize long edge", self.resize_edge))
         more.addWidget(self.margin)
         self.more_box.hide()
@@ -408,6 +485,9 @@ class EventEditor(QDialog):
         self.save.clicked.connect(self._save)
         self.delete.setVisible(not self.is_new)
         self.duplicate.setVisible(not self.is_new)
+        self._delete_preset_armed = QTimer(self)
+        self._delete_preset_armed.setSingleShot(True)
+        self._delete_preset_armed.timeout.connect(lambda: self._sync_preset(self.current()))
         self._delete_armed = QTimer(self)
         self._delete_armed.setSingleShot(True)
         self._delete_armed.timeout.connect(lambda: self.delete.setText("Delete"))
@@ -432,16 +512,19 @@ class EventEditor(QDialog):
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(PREVIEW_DEBOUNCE_MS)
         self._debounce.timeout.connect(self._request_preview)
-        for line in (self.name, self.album, self.keywords):
+        for line in (self.name, self.album, self.keywords, self.custom_name):
             line.textChanged.connect(self._changed)
-        for combo in (self.destination, self.privacy):
+        for combo in (self.destination, self.privacy, self.naming):
             combo.currentIndexChanged.connect(self._changed)
-        for toggle in (self.hold, self.auto_wb, self.auto_tone, self.watermark):
+        for toggle in (self.hold, self.auto_wb, self.auto_tone, self.watermark, self.limit_size):
             toggle.toggled.connect(self._changed)
-        for slider in (self.wb_strength, self.size, self.opacity, self.margin):
+        for slider in (self.wb_strength, self.size, self.opacity, self.margin, self.quality):
             slider.changed.connect(self._changed)
         self.position.changed.connect(self._changed)
-        self.quality.valueChanged.connect(self._changed)
+        self.start_number.valueChanged.connect(self._changed)
+        self.size_kb.valueChanged.connect(self._changed)
+        self.preset.activated.connect(self._choose_preset)
+        self._load_presets()
         self.resize_edge.valueChanged.connect(self._changed)
         bridge.preview_ready.connect(self._on_preview)
         self._load_watermark_thumb()
@@ -474,6 +557,11 @@ class EventEditor(QDialog):
             watermark_margin=self.margin.value() / 100,
             max_long_edge=self.resize_edge.value(),
             jpeg_quality=self.quality.value(),
+            file_naming=self.naming.currentData(),
+            custom_name=self.custom_name.text().strip(),
+            start_number=self.start_number.value(),
+            limit_file_size=self.limit_size.isChecked(),
+            file_size_kb=self.size_kb.value(),
         )
 
     def errors(self) -> dict[str, str]:
@@ -502,6 +590,13 @@ class EventEditor(QDialog):
         self.watermark_name.setText(
             self._watermark_path.replace("\\", "/").rsplit("/", 1)[-1] or "No file chosen"
         )
+        self.custom_field.setVisible(event.file_naming in USES_CUSTOM)
+        self.start_field.setVisible(event.file_naming in USES_SEQUENCE)
+        self.custom_name.setPlaceholderText(event.name or "Event name")
+        self.example.setText(f"Example: {self.bridge.example_file_name(event)}")
+        self.quality.setEnabled(not event.limit_file_size)
+        self.size_field.setVisible(event.limit_file_size)
+        self._sync_preset(event)
 
         found = self.errors()
         for key, line, text in (
@@ -521,6 +616,71 @@ class EventEditor(QDialog):
         opened = self.more_box.isHidden()
         self.more_box.setVisible(opened)
         self.more.set_icon("chevron-down" if opened else "chevron-right")
+
+    # --------------------------------------------------------------- presets
+    def _load_presets(self) -> None:
+        self._presets = self.bridge.presets()
+        self.preset.clear()
+        self.preset.addItem(NO_PRESET, "")
+        for preset in self._presets:
+            self.preset.addItem(preset.name, preset.id)
+        self._sync_preset(self.current())
+
+    def _sync_preset(self, event: Profile) -> None:
+        """Select the preset the export settings match, or "No preset"."""
+        if not hasattr(self, "_delete_preset_armed"):
+            return
+        match = next((p for p in self._presets if p.matches(event)), None)
+        index = self.preset.findData(match.id) if match else 0
+        if index != self.preset.currentIndex():
+            self.preset.setCurrentIndex(index)
+        if not self._delete_preset_armed.isActive():
+            self.preset_action.setText("Delete preset" if match else "Save as preset…")
+
+    def selected_preset(self) -> ExportPreset | None:
+        chosen = self.preset.currentData()
+        return next((p for p in self._presets if p.id == chosen), None)
+
+    def apply_preset(self, preset: ExportPreset) -> None:
+        self.naming.setCurrentIndex(FILE_NAMING.index(preset.file_naming))
+        self.custom_name.setText(preset.custom_name)
+        self.start_number.setValue(preset.start_number)
+        self.quality.setValue(preset.jpeg_quality)
+        self.limit_size.setChecked(preset.limit_file_size)
+        self.size_kb.setValue(preset.file_size_kb)
+        self._changed()
+
+    def _choose_preset(self, index: int) -> None:
+        self.preset_namer.hide()
+        preset = self.selected_preset()
+        if preset is not None:
+            self.apply_preset(preset)
+
+    def _preset_action(self) -> None:
+        preset = self.selected_preset()
+        if preset is None:  # "Save as preset…"
+            opened = self.preset_namer.isHidden()
+            self.preset_namer.setVisible(opened)
+            if opened:
+                self.preset_name.setFocus()
+            return
+        if not self._delete_preset_armed.isActive():
+            self.preset_action.setText("Really delete?")
+            self._delete_preset_armed.start(4000)
+            return
+        self._delete_preset_armed.stop()
+        self.bridge.delete_preset(preset.id)
+        self._load_presets()
+
+    def _save_preset(self) -> None:
+        name = self.preset_name.text().strip()
+        if not name:
+            self.preset_name.setFocus()
+            return
+        self.bridge.save_preset(name, self.current())
+        self.preset_name.clear()
+        self.preset_namer.hide()
+        self._load_presets()
 
     # ------------------------------------------------------------- watermark
     def _choose_watermark(self) -> None:
