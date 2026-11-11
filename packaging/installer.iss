@@ -1,7 +1,7 @@
 ; Inno Setup script for WeFlow. Built by packaging\build_windows.ps1:
-;   ISCC.exe /DAppVersion=1.0.0 packaging\installer.iss
+;   ISCC.exe /DAppVersion=1.1.0 packaging\installer.iss
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.1.0"
 #endif
 
 [Setup]

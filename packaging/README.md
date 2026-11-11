@@ -11,8 +11,8 @@ pwsh packaging/build_windows.ps1        # Windows -> dist\WeFlow-Setup-<version>
 ```
 
 The Windows build needs [Inno Setup 6](https://jrsoftware.org/isinfo.php).
-macOS builds are per architecture: run the script on Apple silicon for arm64 and
-on an Intel Mac for x86_64.
+The macOS build is for Apple silicon only and must run on an Apple silicon Mac.
+Intel Macs are not supported.
 
 ## Releasing
 
@@ -21,12 +21,31 @@ on an Intel Mac for x86_64.
 2. Tag that commit and push the tag:
 
    ```bash
-   git tag v1.0.0 && git push origin v1.0.0
+   git tag v1.1.0 && git push origin v1.1.0
    ```
 
 CI tests and builds the tag, then the **Release** job publishes the installers to a
-GitHub Release called `v1.0.0`. The job stops if the tag does not match
+GitHub Release called `v1.1.0`. The job stops if the tag does not match
 `WeFlow.__version__`. Running it again for the same tag replaces the files.
+
+### The public releases repo
+
+This repo is private, so nobody without access can download from its releases, and an
+installed app cannot see them. The Release job therefore publishes the same installers
+to the public repo [`TheOrangeStuff/weflow-releases`](https://github.com/TheOrangeStuff/weflow-releases),
+which holds only a README and the releases. Installed apps ask that repo for its latest
+release to know when to offer an update (`WeFlow/core/updates.py`, which is also where
+the job reads the repo name from).
+
+- **Token (one-time setup):** create a fine-grained personal access token limited to
+  `weflow-releases` with **Contents: Read and write**, and save it in this repo as the
+  Actions secret `RELEASES_REPO_TOKEN`. Without it the Release job fails before
+  publishing anything.
+- **Release notes** on the public page are the `## <version>` section of `CHANGELOG.md`,
+  so write that section for users. Without one, the notes are just the version name.
+- **Pre-releases and drafts** in the public repo are never offered as updates.
+- **Everything in an installer is public**, which is one reason no API key is built in
+  (below).
 
 ## Signing and notarisation
 
@@ -43,13 +62,27 @@ Nothing secret lives in the repo. The scripts read these environment variables
 
 Unsigned builds work, but macOS Gatekeeper and Windows SmartScreen warn on first open.
 
-## The app's own API keys
+## API keys and credentials
 
-SmugMug and Flickr both need an API key that identifies the app.
-`packaging/write_builtin_keys.py` bakes them in from
-`WEFLOW_SMUGMUG_API_KEY`, `WEFLOW_SMUGMUG_API_SECRET`, `WEFLOW_FLICKR_API_KEY` and
-`WEFLOW_FLICKR_API_SECRET`. If they are not set, the build still works: users enter
-their own key under **Settings → Use my own API key…**.
+No SmugMug or Flickr credential is built into WeFlow or kept on GitHub, in the repo or as
+a CI secret. Each user enters their own API key and secret in Settings (or at first run)
+and signs in; both live only in that computer's keychain. `tests/test_architecture.py`
+fails if a key reaches the workflow or the package, and lists the only CI secrets allowed:
+the optional signing ones above and `RELEASES_REPO_TOKEN`.
+
+## What an update must not break
+
+- **Sign-in.** Installing a newer version leaves the keychain and the app-data folder
+  alone, so nobody re-enters a key or reconnects. Keychain entry names are frozen by
+  `tests/test_config.py`. Clear a stored sign-in only when the changed feature cannot work
+  with it, and say so in that version's changelog section.
+- **macOS keychain prompt.** The keychain ties each entry to the app's code signature. A
+  build signed with the same Developer ID reads it silently. An unsigned build looks like
+  a different app after every update, so macOS asks for the login password once ("Always
+  Allow"). The stored values are still there; only signing removes the prompt.
+- **What's new.** `CHANGELOG.md` is bundled into the app. The first start of a newer
+  version shows the bullets under `## <version>` once; a new install shows nothing.
+  The Release job and the tests fail when that section is missing.
 
 ## Checking a build
 

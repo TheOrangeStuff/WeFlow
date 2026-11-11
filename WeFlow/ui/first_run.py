@@ -165,5 +165,5 @@ class FirstRun(QDialog):
         if event.validate(self.bridge.other_names(event.id)):
             return
         self.created = self.bridge.save_event(event)
-        self.bridge.update_settings(first_run_done=True)
+        self.bridge.finish_first_run()
         self.accept()

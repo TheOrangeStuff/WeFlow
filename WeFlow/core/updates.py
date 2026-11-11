@@ -1,0 +1,128 @@
+"""Ask the public releases repo whether a newer WeFlow exists.
+
+The source repo is private, so installers are also published to ``RELEASES_REPO``,
+which anyone can read without a token. This module only looks; it never downloads or
+installs anything. The Release job in CI reads ``RELEASES_REPO`` from this file.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+RELEASES_REPO = "TheOrangeStuff/weflow-releases"
+LATEST_API = f"https://api.github.com/repos/{RELEASES_REPO}/releases/latest"
+DOWNLOAD_PAGE = f"https://github.com/{RELEASES_REPO}/releases/latest"
+TIMEOUT_SECONDS = 10.0
+CHECK_EVERY_HOURS = 24
+# Bundled beside the WeFlow package by packaging/WeFlow.spec; the repo root in development.
+CHANGELOG = Path(__file__).resolve().parents[2] / "CHANGELOG.md"
+
+log = logging.getLogger("WeFlow.updates")
+_VERSION = re.compile(r"v?(\d{1,6}(?:\.\d{1,6}){0,3})")
+
+
+@dataclass(frozen=True)
+class Update:
+    """A published version newer than the one running."""
+
+    version: str
+    url: str = DOWNLOAD_PAGE
+
+
+def parse_version(text: str) -> tuple[int, ...] | None:
+    """``"v1.2.0"`` -> ``(1, 2)``. Anything that is not plain numbers and dots is None."""
+    match = _VERSION.fullmatch(text.strip())
+    if match is None:
+        return None
+    parts = [int(part) for part in match.group(1).split(".")]
+    while len(parts) > 1 and parts[-1] == 0:
+        parts.pop()  # 1.2 and 1.2.0 are the same version
+    return tuple(parts)
+
+
+def is_newer(candidate: str, than: str) -> bool:
+    """True only when both are plain versions and ``candidate`` is the higher one."""
+    a, b = parse_version(candidate), parse_version(than)
+    return a is not None and b is not None and a > b
+
+
+def fetch_latest_tag() -> str:
+    """The tag of the newest published release, or "" when there is none yet.
+
+    GitHub's "latest" leaves out drafts and pre-releases.
+    """
+    import requests
+
+    response = requests.get(
+        LATEST_API,
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "WeFlow"},
+        timeout=TIMEOUT_SECONDS,
+    )
+    if response.status_code == 404:
+        return ""
+    response.raise_for_status()
+    data = response.json()
+    tag = data.get("tag_name") if isinstance(data, dict) else None
+    return tag if isinstance(tag, str) else ""
+
+
+def check(current: str, fetch: Callable[[], str] | None = None) -> Update | None:
+    """Return the newer version, or None when up to date, offline or unsure.
+
+    Never raises: a failed check is logged and treated as "nothing new".
+    """
+    try:
+        tag = (fetch or fetch_latest_tag)()
+    except (OSError, ValueError) as exc:  # offline, timeout, rate limit, bad JSON
+        log.info("update check failed: %s", type(exc).__name__)
+        return None
+    if not is_newer(tag, current):
+        return None
+    return Update(tag.strip().removeprefix("v"))
+
+
+_HEADING = re.compile(r"##\s+v?(\d+(?:\.\d+)*)")
+_BULLET = re.compile(r"\s*[-*]\s+(.*)")
+_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+
+
+def _plain(text: str) -> str:
+    """Markdown inline marks removed: the UI shows plain text."""
+    text = _LINK.sub(r"\1", text)
+    return re.sub(r"\*\*|__|`", "", text).strip()
+
+
+def whats_new(version: str, changelog: Path | None = None) -> list[str]:
+    """The bullet points under ``## <version>`` in the changelog, as plain text.
+
+    Empty when the file or the section is missing. Text that is not a bullet
+    (headings, paragraphs) is left out.
+    """
+    wanted = parse_version(version)
+    try:
+        lines = (changelog or CHANGELOG).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    items: list[str] = []
+    inside = in_bullet = False
+    for line in lines:
+        if line.startswith("## "):
+            heading = _HEADING.match(line)
+            inside = bool(wanted and heading and parse_version(heading.group(1)) == wanted)
+            in_bullet = False
+            continue
+        if not inside:
+            continue
+        bullet = _BULLET.fullmatch(line)
+        if bullet:
+            items.append(bullet.group(1))
+            in_bullet = True
+        elif in_bullet and line.startswith(" ") and line.strip():
+            items[-1] += " " + line.strip()  # a wrapped line of the same bullet
+        else:
+            in_bullet = False
+    return [text for text in map(_plain, items) if text]

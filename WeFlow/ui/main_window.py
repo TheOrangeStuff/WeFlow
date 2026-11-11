@@ -50,6 +50,7 @@ class MainWindow(QMainWindow):
         self._rows: dict[int, CardRow] = {}
         self._status = "idle"
         self._focus_cleared = False
+        self._update_opened = ""  # version whose download page was opened this session
 
         page = QWidget()
         page.setObjectName("Page")
@@ -82,6 +83,8 @@ class MainWindow(QMainWindow):
         self.notice_bar = NoticeBar(NOTICE_MS)
         self.notice_bar.started.connect(self._start_card)
         self.notice_bar.cancelled.connect(self._card_cancelled)
+        self.notice_bar.download_clicked.connect(self._download_update)
+        self.notice_bar.skipped.connect(self.bridge.skip_update)
 
         # 3. Status panel
         self.panel = StatusPanel()
@@ -152,6 +155,7 @@ class MainWindow(QMainWindow):
         bridge.events_changed.connect(self._on_events_changed)
         bridge.settings_changed.connect(self.refresh)
         bridge.eject_finished.connect(self._on_eject_finished)
+        bridge.update_changed.connect(self.refresh)
 
         for batch in bridge.snapshot():
             self._batches[batch.id] = batch
@@ -191,7 +195,6 @@ class MainWindow(QMainWindow):
         self.pause.setText("Resume" if paused else "Pause")
         self.pause.set_icon("play" if paused else "pause")
         self.activity.setVisible(bool(self.drawer.entries))
-        self._notice_gap.setVisible(self.notice_bar.isVisibleTo(self))
 
         if any(b.state in ("attention", "error") for b in visible):
             status = "attention"
@@ -201,12 +204,29 @@ class MainWindow(QMainWindow):
             status = "working"
         else:
             status = "idle"
+        self._offer_update(status)
+        self._notice_gap.setVisible(self.notice_bar.isVisibleTo(self))
         if status != self._status:
             self._status = status
             self.status_changed.emit(status)
 
     def status(self) -> str:
         return self._status
+
+    def _offer_update(self, status: str) -> None:
+        """Offer a newer version only while idle, so it never competes with a card."""
+        update = self.bridge.update
+        answered = (self.bridge.settings.skipped_update, self._update_opened)
+        if update is not None and status == "idle" and update.version not in answered:
+            self.notice_bar.offer_update(update.version)
+        else:
+            self.notice_bar.withdraw_update()
+
+    def _download_update(self) -> None:
+        if self.bridge.update is not None:
+            self._update_opened = self.bridge.update.version
+        self.bridge.open_update_page()
+        self.refresh()
 
     def _sync_rows(self, batches: list[Batch]) -> None:
         wanted = {b.id for b in batches}

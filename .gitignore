@@ -10,5 +10,4 @@ dist/
 tests/artifacts/
 tests/fixtures/volumes/
 .DS_Store
-WeFlow/core/_builtin_keys.py
 uv.lock

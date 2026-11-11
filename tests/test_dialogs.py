@@ -256,7 +256,12 @@ def test_fr37_connect_flow_in_settings(qtbot, window, bridge, store, monkeypatch
     row = dialog.services["smugmug"]
     assert row.chip.text() == "Not connected" and row.connect_button.text() == "Connect"
     assert not row.disconnect.isVisible()
-    assert not row.keys_box.isVisible() and row.own_key.isVisible()  # hidden until asked for
+    # WeFlow ships with no API key: the fields are there from the start.
+    assert row.keys_box.isVisible() and not row.own_key.isVisible()
+    assert row.get_key.isVisible() and row.get_key.text() == "Get a SmugMug API key…"
+    row.get_key.click()
+    assert opened == [uploaders.API_KEY_PAGES["smugmug"]]
+    opened.clear()
 
     qtbot.mouseClick(row.connect_button, Qt.MouseButton.LeftButton)  # no API key yet
     qtbot.waitUntil(lambda: row.error.isVisible(), timeout=3000)
@@ -281,7 +286,11 @@ def test_fr37_connect_flow_in_settings(qtbot, window, bridge, store, monkeypatch
     qtbot.waitUntil(lambda: row.chip.text() == "Connected", timeout=3000)
     assert row.connect_button.text() == "Reconnect" and row.disconnect.isVisible()
     assert not row.code_box.isVisible()
+    # The key is stored now, so its fields fold away behind a link.
+    assert not row.keys_box.isVisible() and row.own_key.text() == "Change API key…"
+    assert row.own_key.isVisible() and not row.get_key.isVisible()
     assert dialog.services["flickr"].chip.text() == "Not connected"
+    assert dialog.services["flickr"].keys_box.isVisible()
     shoot(dialog, "settings-light")
 
     # NFR-06: nothing secret reached the JSON files.

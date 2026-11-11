@@ -12,6 +12,8 @@ WeFlow is a desktop app (macOS + Windows) that copies JPEGs from a camera card, 
 - `WeFlow/core` never imports Qt. The UI reaches core only through `WeFlow/ui/bridge.py`.
 - The UI thread never does file I/O, image work or network calls.
 - Secrets live only in the OS keychain (`WeFlow/core/secrets.py`), never in JSON files or logs.
+- **No SmugMug or Flickr credentials on GitHub or in a build**: not in the repo, not in CI secrets, not baked into installers. Each user enters their own API key and signs in.
+- **An update never signs the user out.** Keychain entry names and the settings files stay readable by newer versions. Only clear a stored sign-in when the changed feature cannot work with it, and say so in that version's changelog section.
 - Tests and CI never call the real SmugMug or Flickr APIs. Use `FakeUploader`.
 - The design follows SPEC §7 exactly: sleek, modern, minimal. Use design tokens only; no hard-coded colours in widgets.
   - Colour is reserved for status, and always comes with an icon or a word.
@@ -37,4 +39,5 @@ python tests/fixtures/make_card.py tests/fixtures/volumes/CARD_A --count 25
 - Commit messages start with the requirement or milestone id: `M3: StatusPanel safe state (UI-03)`.
 - User-facing text is plain language, at most 2 short sentences, saying what happened and what to do.
 - Record any deviation from SPEC.md, and why, in `DECISIONS.md`.
+- Every release needs a `## <version>` section in `CHANGELOG.md`, written for users as plain bullets. The app shows it as "What's new" and the public release page uses it as notes.
 - When the spec is ambiguous and the choice is hard to undo (data layout, public API, the visual system), ask. Otherwise choose the simplest option and record it.

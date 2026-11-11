@@ -37,8 +37,10 @@ class ServiceRow(QFrame):
         self.connect_button.clicked.connect(self._begin)
         self.disconnect = Button("Disconnect", "link")
         self.disconnect.clicked.connect(lambda: bridge.disconnect_service(service))
-        self.own_key = Button("Use my own API key…", "link")
+        self.own_key = Button("Change API key…", "link")
         self.own_key.clicked.connect(self._show_keys)
+        self.get_key = Button(f"Get a {self.title} API key…", "link")
+        self.get_key.clicked.connect(lambda: bridge.open_api_key_page(service))
 
         self.api_key = QLineEdit()
         self.api_key.setPlaceholderText("API key")
@@ -83,7 +85,9 @@ class ServiceRow(QFrame):
         head.addWidget(self.connect_button)
         links = QHBoxLayout()
         links.setContentsMargins(0, 0, 0, 0)
+        links.setSpacing(12)
         links.addWidget(self.own_key)
+        links.addWidget(self.get_key)
         links.addStretch(1)
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
@@ -109,11 +113,15 @@ class ServiceRow(QFrame):
             self.chip.set("Not connected", "neutral", "info")
         self.connect_button.setText("Reconnect" if on else "Connect")
         self.disconnect.setVisible(on)
+        if not self.bridge.has_keys.get(self.service):
+            self.keys_box.show()  # WeFlow ships with no key: each user enters their own
         self.own_key.setVisible(self.keys_box.isHidden())
+        self.get_key.setVisible(not self.keys_box.isHidden())
 
     def _show_keys(self) -> None:
         self.keys_box.show()
         self.own_key.hide()
+        self.get_key.show()
         self.api_key.setFocus()
 
     def _fail(self, message: str) -> None:
@@ -235,6 +243,11 @@ class SettingsDialog(QDialog):
         self.login = Toggle(bridge.settings.start_at_login)
         self.login.setAccessibleName("Start at login")
         self.login.toggled.connect(bridge.set_start_at_login)
+        self.updates = Toggle(bridge.settings.check_updates)
+        self.updates.setAccessibleName("Check for new versions")
+        self.updates.toggled.connect(bridge.set_check_updates)
+        self.update_link = Button("", "link")
+        self.update_link.clicked.connect(bridge.open_update_page)
         self.done_button = Button("Done", "primary")
         self.done_button.clicked.connect(self.accept)
 
@@ -255,6 +268,7 @@ class SettingsDialog(QDialog):
         for caption, toggle in (
             ("Play a sound when a card is detected", self.sound),
             ("Start WeFlow at login", self.login),
+            ("Check for new versions", self.updates),
         ):
             line = QHBoxLayout()
             line.addWidget(label(caption, "body"), 1)
@@ -262,7 +276,17 @@ class SettingsDialog(QDialog):
             column.addLayout(line)
         column.addStretch(1)
         footer = QHBoxLayout()
-        footer.addWidget(label(f"WeFlow {__version__}", "label"), 1)
+        footer.setSpacing(8)
+        footer.addWidget(label(f"WeFlow {__version__}", "label"))
+        footer.addWidget(self.update_link)
+        footer.addStretch(1)
         footer.addWidget(self.done_button)
         column.addLayout(footer)
+        bridge.update_changed.connect(self._show_update)
+        self._show_update()
         bridge.refresh_services()
+
+    def _show_update(self) -> None:
+        update = self.bridge.update
+        self.update_link.setText(f"Download {update.version}" if update else "")
+        self.update_link.setVisible(update is not None)

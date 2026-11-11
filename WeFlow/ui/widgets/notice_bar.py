@@ -1,7 +1,8 @@
 """A non-modal bar above the status panel.
 
-Used for the card notice ("Card X → Event", Cancel, auto-start after 5 s; FR-11)
-and for short results such as an eject failure.
+Used for the card notice ("Card X → Event", Cancel, auto-start after 5 s; FR-11),
+for short results such as an eject failure, and to offer a newer version. The
+update offer has the lowest priority: it waits behind the other two.
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ LEVELS = {
 class NoticeBar(QFrame):
     started = Signal(str, str)  # card path, label: the countdown ran out
     cancelled = Signal(str)  # card path
+    download_clicked = Signal()  # the update offer was accepted
+    skipped = Signal()  # the update offer was turned down
 
     def __init__(self, countdown_ms: int = 5000, message_ms: int = 6000) -> None:
         super().__init__()
@@ -30,9 +33,13 @@ class NoticeBar(QFrame):
         self.message_ms = message_ms
         self._card: tuple[str, str] | None = None
         self._remaining = 0
+        self._update = ""  # version on offer
         self.icon = Icon("card-sim", "text", 16)
         self.text = label("", "body")
         self.detail = label("", "secondary")
+        self.action = Button("Download", "outline")
+        self.action.clicked.connect(self._download)
+        self.action.hide()
         self.cancel = Button("Cancel", "text")
         self.cancel.clicked.connect(self._cancel)
         row = QHBoxLayout(self)
@@ -41,13 +48,14 @@ class NoticeBar(QFrame):
         row.addWidget(self.icon)
         row.addWidget(self.text, 1)
         row.addWidget(self.detail)
+        row.addWidget(self.action)
         row.addWidget(self.cancel)
         self._tick = QTimer(self)
         self._tick.setInterval(250)
         self._tick.timeout.connect(self._on_tick)
         self._hide = QTimer(self)
         self._hide.setSingleShot(True)
-        self._hide.timeout.connect(self.hide)
+        self._hide.timeout.connect(self._rest)
         self.hide()
 
     def card(self) -> tuple[str, str] | None:
@@ -60,7 +68,9 @@ class NoticeBar(QFrame):
         self._remaining = self.countdown_ms
         self.icon.set_icon("card-sim", "text")
         self.text.setText(f"Card {card_label} → {event_name}")
+        self.action.hide()
         self.cancel.setText("Cancel")
+        self.cancel.setToolTip("")
         self.cancel.show()
         self._show_remaining()
         self.show()
@@ -74,10 +84,47 @@ class NoticeBar(QFrame):
         self.icon.set_icon(icon, token)
         self.text.setText(message)
         self.detail.setText("")
+        self.action.hide()
         self.cancel.setText("Dismiss")
+        self.cancel.setToolTip("")
         self.cancel.show()
         self.show()
         self._hide.start(self.message_ms)
+
+    def offer_update(self, version: str) -> None:
+        """Offer a newer version until it is answered. Waits behind cards and messages."""
+        if version != self._update or not self.offering_update():
+            self._update = version
+            self._rest()
+
+    def withdraw_update(self) -> None:
+        self._update = ""
+        self._rest()
+
+    def offering_update(self) -> bool:
+        return self.action.isVisibleTo(self)
+
+    def _rest(self) -> None:
+        """Nothing urgent is showing: fall back to the update offer, or hide."""
+        if self._card is not None or self._hide.isActive():
+            return
+        if not self._update:
+            self.action.hide()
+            self.hide()
+            return
+        self.icon.set_icon(*LEVELS["info"])
+        self.text.setText(f"WeFlow {self._update} is available")
+        self.detail.setText("")
+        self.action.show()
+        self.cancel.setText("Skip")
+        self.cancel.setToolTip("Don't offer this version again")
+        self.cancel.show()
+        self.show()
+
+    def _download(self) -> None:
+        self._update = ""
+        self._rest()
+        self.download_clicked.emit()
 
     def dismiss_card(self, path: str) -> None:
         """The card went away before the import started."""
@@ -104,13 +151,19 @@ class NoticeBar(QFrame):
     def _stop(self) -> None:
         self._tick.stop()
         self._card = None
-        self.hide()
+        self._rest()
 
     def _cancel(self) -> None:
         if self._card:
             path = self._card[0]
             self._stop()
             self.cancelled.emit(path)
-        else:
+        elif self._hide.isActive():
             self._hide.stop()
+            self._rest()
+        elif self._update:
+            self._update = ""
+            self._rest()
+            self.skipped.emit()
+        else:
             self.hide()

@@ -13,11 +13,13 @@ After that, inserting a card asks nothing.
 
 ## Install
 
-- **macOS 13 or later:** open `WeFlow-<version>-<arch>.dmg` and drag WeFlow to Applications.
-  Use the `arm64` file on Apple silicon and `x86_64` on Intel Macs.
+- **Mac with Apple silicon, macOS 13 or later:** open `WeFlow-<version>-arm64.dmg` and drag
+  WeFlow to Applications. Intel Macs are not supported.
 - **Windows 10 or 11:** run `WeFlow-Setup-<version>.exe`.
 
 No Python or other software is needed.
+
+Installers are at <https://github.com/TheOrangeStuff/weflow-releases/releases/latest>.
 
 ## First start
 
@@ -25,6 +27,7 @@ WeFlow asks three things, once:
 
 1. **Where to keep photos.** This is your *library*. Each event gets its own folder there.
 2. **Which service to connect** (SmugMug or Flickr). You can skip this and do it later in Settings.
+   You need your own API key from that service; the **Get an API key…** link opens the page.
 3. **Your first event:** a name, and where its photos should go.
 
 ## At the shoot
@@ -81,10 +84,15 @@ Deleting an event in WeFlow never deletes its photos.
 ## Settings
 
 - **Library folder.**
-- **SmugMug / Flickr:** press **Connect**, approve WeFlow in your browser, and paste the
-  code it shows. Sign-in details are kept in the macOS Keychain or Windows Credential
-  Manager, never in plain files.
+- **SmugMug / Flickr:** paste your own API key and secret, press **Connect**, approve
+  WeFlow in your browser, and paste the code it shows. The key and sign-in details are kept
+  in the macOS Keychain or Windows Credential Manager, never in plain files, and they stay
+  there when you install a newer WeFlow.
 - **Card-detected sound** and **Start at login**.
+- **Check for new versions:** when a newer WeFlow is out, a bar offers **Download**, which
+  opens the download page. **Skip** hides that version; Settings still links to it.
+  WeFlow never installs anything by itself.
+- After an update, WeFlow shows **What's new** once.
 
 ## Good to know
 

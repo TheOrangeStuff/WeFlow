@@ -1,6 +1,18 @@
 # Changelog
 
-## 1.0.0 — unreleased
+## 1.1.0 — 2026-11-11
+
+- WeFlow tells you when a newer version is out. A bar in the main window offers
+  **Download**, which opens the download page, or **Skip** to hide that version.
+  It only appears while WeFlow is idle, and can be switched off in Settings.
+- After an update, WeFlow shows what's new once.
+- Connecting SmugMug or Flickr asks for your own API key straight away, with a link to
+  the page where you get one. Keys you already entered keep working.
+- Installers are now also published to the public
+  [weflow-releases](https://github.com/TheOrangeStuff/weflow-releases) page.
+- WeFlow for Mac now needs a Mac with Apple silicon. Intel Macs are no longer supported.
+
+## 1.0.0 — 2026-11-11
 
 Built from `SPEC.md`, milestone by milestone. Nothing here has yet been tried with a
 real card, a real SmugMug or Flickr account, or an installed build; see

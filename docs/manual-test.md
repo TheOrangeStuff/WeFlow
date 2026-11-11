@@ -2,7 +2,7 @@
 
 Automated tests cover the engine and the interface with fake cards and fake uploaders.
 This script covers what needs real hardware, real accounts and an installed build.
-Run it on **macOS (Apple silicon and Intel)** and **Windows 10/11** before a release.
+Run it on **macOS (Apple silicon)** and **Windows 10/11** before a release.
 
 Tick each box. Note the build (`Settings` shows the version) and the machine.
 
@@ -23,7 +23,9 @@ and Flickr accounts with an empty test gallery / album name; a watermark PNG.
 - [ ] Flickr: same, with Flickr's code.
 - [ ] A wrong code shows a plain error and stays **Not connected**.
 - [ ] Disconnect returns to **Not connected**; Reconnect works.
-- [ ] "Use my own API key…" reveals the key fields; connecting with your own key works.
+- [ ] With no key stored, the API key fields show at once and "Get an API key…" opens the
+      service's page; connecting with your own key works. Afterwards the fields fold away
+      behind "Change API key…".
 - [ ] macOS Keychain Access / Windows Credential Manager shows entries under `WeFlow`.
 - [ ] `settings.json` and `events.json` in the app-data folder contain no keys or tokens.
 
@@ -82,6 +84,15 @@ and Flickr accounts with an empty test gallery / album name; a watermark PNG.
 - [ ] Switch the OS between light and dark: WeFlow follows without a restart.
 - [ ] Tab reaches every control, with a visible focus ring; Space / Enter activates it.
 - [ ] Start at login on: WeFlow starts after signing in again. Off: it does not.
+- [ ] Install an older build while a newer release is public: within a few seconds of an
+      idle start, the bar says "WeFlow <version> is available". **Download** opens the
+      release page; **Skip** hides it and it stays hidden after a restart.
+- [ ] Offline start: no update bar, no error.
+- [ ] Install a newer build over a connected older one: both services still show
+      **Connected** and an upload works without entering anything. (macOS, unsigned builds:
+      one keychain password prompt is expected.)
+- [ ] The first start after that update shows "What's new" once; the next start does not.
+      A brand-new install shows no "What's new".
 
 ## 9. Volume test
 - [ ] Import a card with 1 000+ JPEGs: the window never freezes, the count keeps moving,

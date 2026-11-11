@@ -64,24 +64,23 @@ def _offline(service: str) -> UploadError:
     return UploadError(f"Can't reach {service}. WeFlow will keep trying.")
 
 
-def _builtin(name: str) -> str:
-    """App-wide API keys baked in at packaging time (see packaging/README.md)."""
-    try:
-        from . import _builtin_keys  # type: ignore[attr-defined,unused-ignore]
-    except ImportError:
-        return ""
-    return str(getattr(_builtin_keys, name.upper(), ""))
+# Where each user applies for their own API key. WeFlow ships with none.
+API_KEY_PAGES = {
+    "smugmug": "https://api.smugmug.com/api/developer/apply",
+    "flickr": "https://www.flickr.com/services/apps/create/apply",
+}
 
 
 def api_credentials(service: str) -> tuple[str, str]:
-    """The user's own API key and secret if set, else the built-in ones."""
-    key = secrets.get_secret(f"{service}_api_key") or _builtin(f"{service}_api_key")
-    secret = secrets.get_secret(f"{service}_api_secret") or _builtin(f"{service}_api_secret")
-    return key, secret
+    """The user's own API key and secret, from the keychain. Nothing is built in."""
+    return secrets.get_secret(f"{service}_api_key"), secrets.get_secret(f"{service}_api_secret")
 
 
-def has_builtin_keys(service: str) -> bool:
-    return bool(_builtin(f"{service}_api_key") and _builtin(f"{service}_api_secret"))
+def has_api_keys(service: str) -> bool:
+    try:
+        return all(api_credentials(service))
+    except secrets.SecretsError:
+        return False
 
 
 def is_connected(service: str) -> bool:

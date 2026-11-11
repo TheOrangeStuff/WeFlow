@@ -10,9 +10,12 @@ cd "$(dirname "$0")/.."
 
 VERSION="$(python -c 'import WeFlow; print(WeFlow.__version__)')"
 ARCH="$(uname -m)"
+if [[ "$ARCH" != "arm64" ]]; then
+  echo "WeFlow is built for Apple silicon only; this Mac is $ARCH." >&2
+  exit 1
+fi
 DMG="dist/WeFlow-${VERSION}-${ARCH}.dmg"
 
-python packaging/write_builtin_keys.py
 rm -rf build dist
 pyinstaller --noconfirm packaging/WeFlow.spec
 

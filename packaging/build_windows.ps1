@@ -9,7 +9,6 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 $version = python -c "import WeFlow; print(WeFlow.__version__)"
-python packaging/write_builtin_keys.py
 if (Test-Path build) { Remove-Item build -Recurse -Force }
 if (Test-Path dist) { Remove-Item dist -Recurse -Force }
 pyinstaller --noconfirm packaging/WeFlow.spec

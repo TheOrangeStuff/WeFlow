@@ -4,18 +4,20 @@ import sys
 from pathlib import Path
 
 ROOT = Path(SPECPATH).parent
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 a = Analysis(
     [str(ROOT / "packaging" / "entry.py")],
     pathex=[str(ROOT)],
-    datas=[(str(ROOT / "WeFlow" / "assets" / "icons"), "WeFlow/assets/icons")],
+    datas=[
+        (str(ROOT / "WeFlow" / "assets" / "icons"), "WeFlow/assets/icons"),
+        (str(ROOT / "CHANGELOG.md"), "."),  # read by core/updates.py for "What's new"
+    ],
     hiddenimports=[
         "keyring.backends.macOS",
         "keyring.backends.Windows",
         "keyring.backends.SecretService",
         "flickrapi",
-        "WeFlow.core._builtin_keys",
     ],
     excludes=["tkinter", "PySide6.QtNetwork", "PySide6.QtQml", "PySide6.QtQuick", "pytest"],
     noarchive=False,

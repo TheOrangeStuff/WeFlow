@@ -15,6 +15,7 @@ from .first_run import FirstRun
 from .main_window import MainWindow
 from .settings_dialog import SettingsDialog
 from .tray import Tray
+from .whats_new import WhatsNew
 
 
 class App:
@@ -60,6 +61,15 @@ class App:
         dialog.open()
         return dialog
 
+    def show_whats_new(self) -> None:
+        """Once per version, after an update: say what changed."""
+        self.bridge.whats_new(self.open_whats_new)
+
+    def open_whats_new(self, version: str, items: list[str]) -> WhatsNew:
+        dialog = WhatsNew(version, items, self.window)
+        dialog.open()
+        return dialog
+
     def quit(self) -> None:
         self.tray.hide()
         self.bridge.shutdown()
@@ -96,6 +106,9 @@ def run(argv: list[str] | None = None) -> int:
     app.start()
     if smoke_test:
         QTimer.singleShot(2000, app.quit)
+    else:
+        bridge.watch_updates()
+        app.show_whats_new()
     code = qt.exec()
     bridge.shutdown()
     lock.unlock()

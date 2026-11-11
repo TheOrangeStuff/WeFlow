@@ -11,7 +11,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from tests.fixtures.make_card import make_card  # noqa: E402
-from WeFlow.core import secrets  # noqa: E402
+from WeFlow.core import secrets, updates  # noqa: E402
 from WeFlow.core.config import Profile, Store  # noqa: E402
 from WeFlow.core.events import BatchUpdated, Event, Notice  # noqa: E402
 from WeFlow.core.pipeline import Pipeline  # noqa: E402
@@ -28,6 +28,12 @@ def memory_secrets(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> secrets.M
     monkeypatch.setenv("WeFlow_FAKE_VOLUMES", str(tmp_path / "volumes"))
     (tmp_path / "volumes").mkdir()
     return backend
+
+
+@pytest.fixture(autouse=True)
+def no_update_checks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test may ask GitHub for the latest release. Tests set their own tag."""
+    monkeypatch.setattr(updates, "fetch_latest_tag", lambda: "")
 
 
 @pytest.fixture

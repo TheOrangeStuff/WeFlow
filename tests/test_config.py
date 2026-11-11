@@ -97,3 +97,60 @@ def test_nfr06_legacy_secrets_move_to_keyring(
     migrated = store.events()[0]
     assert migrated.id and migrated.folder == "Old-Event"
     assert json.loads((data / "events.json").read_text())[0]["id"] == migrated.id
+
+
+# What WeFlow 1.0.0 called its keychain entries. An update must find them again.
+KEYCHAIN_NAMES_1_0 = {
+    "smugmug_api_key",
+    "smugmug_api_secret",
+    "smugmug_token",
+    "smugmug_token_secret",
+    "flickr_api_key",
+    "flickr_api_secret",
+    "flickr_token",
+    "flickr_token_secret",
+}
+
+
+def test_update_keychain_names_are_frozen() -> None:
+    """Renaming any of these signs every user out on update. Migrate instead."""
+    assert secrets.SERVICE == "WeFlow"
+    names = {v for k, v in vars(secrets).items() if k.isupper() and k != "SERVICE"}
+    assert names == KEYCHAIN_NAMES_1_0
+
+
+def test_update_keeps_the_user_signed_in(
+    tmp_path: Path, memory_secrets: secrets.MemoryBackend
+) -> None:
+    """Start on the data an older version left behind: nothing has to be entered again."""
+    from WeFlow.core import uploaders
+
+    data = tmp_path / "appdata"
+    data.mkdir(parents=True)
+    old_settings = {  # settings.json as 1.0.0 wrote it: none of the newer fields
+        "library": str(tmp_path / "library"),
+        "active_event_id": "abc123",
+        "paused": False,
+        "card_sound": False,
+        "start_at_login": True,
+        "first_run_done": True,
+        "sample_photo": "",
+    }
+    (data / "settings.json").write_text(json.dumps(old_settings), encoding="utf-8")
+    old_event = {"id": "abc123", "name": "Gala", "folder": "Gala", "destination": "smugmug"}
+    (data / "events.json").write_text(json.dumps([old_event]), encoding="utf-8")
+    before = {name: f"value-of-{name}" for name in KEYCHAIN_NAMES_1_0}
+    memory_secrets.values.update(before)
+
+    store = Store(data)
+    store.load()
+    assert store.settings.first_run_done and store.settings.card_sound is False
+    assert store.active() is not None and store.active().name == "Gala"  # type: ignore[union-attr]
+    for service in ("smugmug", "flickr"):
+        assert uploaders.has_api_keys(service) and uploaders.is_connected(service)
+    assert uploaders.api_credentials("smugmug") == (
+        "value-of-smugmug_api_key",
+        "value-of-smugmug_api_secret",
+    )
+    store.update_settings(seen_version="9.9.9")  # the new version saves its own settings
+    assert memory_secrets.values == before  # and never touches the keychain

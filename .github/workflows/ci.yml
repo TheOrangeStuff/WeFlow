@@ -49,20 +49,14 @@ jobs:
     needs: test
     if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.optional }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { name: macOS arm64, os: macos-latest, optional: false }
-          - { name: macOS x86_64, os: macos-15-intel, optional: true }
-          - { name: Windows x64, os: windows-latest, optional: false }
+        include:  # Apple silicon and Windows only; no Intel Mac build (DECISIONS 40)
+          - { name: macOS arm64, os: macos-latest }
+          - { name: Windows x64, os: windows-latest }
     env:
       QT_QPA_PLATFORM: offscreen
-      WEFLOW_SMUGMUG_API_KEY: ${{ secrets.WEFLOW_SMUGMUG_API_KEY }}
-      WEFLOW_SMUGMUG_API_SECRET: ${{ secrets.WEFLOW_SMUGMUG_API_SECRET }}
-      WEFLOW_FLICKR_API_KEY: ${{ secrets.WEFLOW_FLICKR_API_KEY }}
-      WEFLOW_FLICKR_API_SECRET: ${{ secrets.WEFLOW_FLICKR_API_SECRET }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -158,6 +152,24 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME does not match WeFlow.__version__ ($version)."
             exit 1
           fi
+          if ! grep -qE "^## v?${version//./\\.}( |$)" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## $version' section. It is shown as What's New in the app and on the public release page."
+            exit 1
+          fi
+      - name: Public releases repo is reachable
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
+        run: |
+          repo="$(sed -n 's/^RELEASES_REPO = "\(.*\)"$/\1/p' WeFlow/core/updates.py)"
+          if [ -z "$repo" ]; then
+            echo "::error::RELEASES_REPO was not found in WeFlow/core/updates.py."
+            exit 1
+          fi
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::The RELEASES_REPO_TOKEN secret is not set, so $repo cannot be updated and installed apps would never see this version. See packaging/README.md."
+            exit 1
+          fi
+          echo "RELEASES_REPO=$repo" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           pattern: WeFlow-*
@@ -173,4 +185,19 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" dist/* --verify-tag \
               --title "WeFlow ${GITHUB_REF_NAME#v}" --generate-notes
+          fi
+      # The source repo is private. Installed apps look for new versions in the public
+      # repo (WeFlow/core/updates.py), so the same installers are published there too.
+      - name: Publish the installers to the public releases repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '/^## /{on = ($2 == v); next} on' CHANGELOG.md > notes.md
+          grep -q '[^[:space:]]' notes.md || echo "WeFlow $version" > notes.md
+          if gh release view "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --repo "$RELEASES_REPO" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --repo "$RELEASES_REPO" \
+              --title "WeFlow $version" --notes-file notes.md
           fi

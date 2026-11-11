@@ -28,9 +28,8 @@ owner and accepted on 2026-11-11.
 7. **ruff ignores SIM112** because the spec names the variable `WeFlow_FAKE_VOLUMES`
    (mixed case). `WeFlow_DATA_DIR`, `WeFlow_THEME` and `WeFlow_NO_MOTION` follow the
    same pattern (data folder override; forced theme and no animation for tests).
-8. **macOS x86_64 is built on the `macos-15-intel` runner** and marked optional in CI, so
-   the run stays green if GitHub retires that runner. Builds are per architecture, not
-   universal, because NumPy and Pillow wheels are not universal2.
+8. **macOS builds are per architecture**, not universal, because NumPy and Pillow wheels
+   are not universal2. Only arm64 is built now (decision 40).
 
 ## Layout
 
@@ -79,10 +78,8 @@ owner and accepted on 2026-11-11.
 21. **Two upload workers.** The spec gives no number.
 22. **Flickr tokens.** `flickrapi` is created with `store_token=False`; otherwise it writes
     tokens to its own plain SQLite file, against NFR-06.
-23. **The app's own API keys** are baked in at packaging time from environment variables
-    (`packaging/write_builtin_keys.py`). Without them the build works and users enter
-    their own key in Settings. The owner will obtain keys; until the four `WEFLOW_*`
-    repository secrets are set, builds ship without them (see `packaging/README.md`).
+23. **The app has no API keys of its own** (replaces the earlier plan to bake keys in at
+    packaging time; see decision 37). Each user enters their own key.
 24. **Fake volumes "eject" successfully without touching anything.** Linux is supported
     for development only (`/media/$USER`, `/run/media/$USER`, `umount`).
 
@@ -119,8 +116,53 @@ owner and accepted on 2026-11-11.
     `v<version>` runs the usual tests and builds, then the **Release** job attaches the
     `.dmg` and `.exe` files to a release of that name. The tag must match
     `WeFlow.__version__`, or the job fails before publishing. Pushes to `main` still
-    produce artifacts only. If the optional Intel build fails, the release goes out
-    without the x86_64 `.dmg`. **(confirmed)**
+    produce artifacts only. **(confirmed)**
+
+35. **Installers are also published to a public repo, `TheOrangeStuff/weflow-releases`.**
+    This repo is private, so an installed app cannot read its releases without a token,
+    and a token must not ship inside the app. The Release job publishes the same files
+    to the public repo using the `RELEASES_REPO_TOKEN` secret, and fails early if the
+    secret is missing. The private release (decision 34) is kept. Public release notes
+    come from the matching `CHANGELOG.md` section. **(owner's choice)**
+36. **Update notice (not in SPEC).** At start, and every 24 h while open, the app asks
+    the public repo for its latest release (`core/updates.py`) with no credentials and
+    sends nothing about the user. A newer version is offered in the notice bar with
+    **Download** (opens the release page in the browser) and **Skip** (remembers that
+    version). The app never downloads or installs by itself: that needs signed builds
+    and an updater framework.
+    - The offer shows only while the status is idle, and waits behind a card countdown
+      or a short message, so it never competes with "safe to remove".
+    - A skipped version stays listed as a link beside the version number in Settings.
+    - A failed check (offline, rate limit) is silent. "Check for new versions" in
+      Settings turns it off. The `--smoke-test` launch does not check.
+    - Tests replace the fetch, so they never call GitHub.
+
+37. **No SmugMug or Flickr credentials on GitHub or in a build.** The built-in key path
+    (`packaging/write_builtin_keys.py`, the four `WEFLOW_*` CI secrets, the
+    `_builtin_keys` module) is removed. Users enter their own API key and secret, so the
+    key fields show whenever none is stored, with a link to the service's API-key page.
+    No release ever contained a built-in key, so existing users are unaffected.
+    The remaining CI secrets are the optional signing certificates and
+    `RELEASES_REPO_TOKEN`; a test pins that list. **(owner's rule)**
+38. **"What's new" (not in SPEC).** The first start of a newer version shows a small
+    dialog with the bullets of that version's `CHANGELOG.md` section, once
+    (`seen_version` in settings). A new install and a downgrade show nothing.
+    `CHANGELOG.md` is bundled into the app as the single source, shared with the public
+    release notes. The Release job and a test fail if the section is missing.
+39. **An update never signs the user out.** Sign-in lives in the keychain and settings
+    in app-data; neither installer touches them. Keychain entry names are frozen by a
+    test, and another test starts from 1.0.0's files to prove nothing is asked again.
+    A release may clear a stored sign-in only when the changed feature cannot work with
+    it, and its changelog section must say so. On macOS, unsigned builds trigger one
+    keychain password prompt after each update, because the signature changed; a
+    Developer ID signature avoids it. **(owner's rule)**
+
+40. **No Intel Mac build (deviates from NFR-01).** From 1.1.0, macOS releases are
+    Apple silicon (arm64) only; Windows x64 is unchanged. The `macos-15-intel` CI job is
+    removed and `build_macos.sh` refuses to run on anything but arm64. The 1.0.0 Intel
+    `.dmg` stays on its private release, but no later version is built for Intel, and
+    1.0.0 has no update check, so no Intel Mac is ever offered an update it cannot run.
+    **(owner's choice)**
 
 ## Not verified yet
 

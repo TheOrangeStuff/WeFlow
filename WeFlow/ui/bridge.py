@@ -14,10 +14,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Qt, QUrl, Signal
+from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QImage
 
-from WeFlow.core import autostart, cards, imaging, secrets, uploaders
+from WeFlow import __version__
+from WeFlow.core import autostart, cards, imaging, secrets, updates, uploaders
 from WeFlow.core.config import (
     DESTINATIONS,
     FLICKR_PRIVACY,
@@ -32,6 +33,7 @@ from WeFlow.core.events import BatchUpdated, CardDetected, CardRemoved, Event, N
 from WeFlow.core.logs import setup_logging
 from WeFlow.core.pipeline import ACTIVE_STATES, Pipeline, plural
 from WeFlow.core.state import Batch
+from WeFlow.core.updates import Update
 from WeFlow.core.uploaders import PendingAuth, Uploader, UploadError, service_name
 
 __all__ = [
@@ -46,6 +48,7 @@ __all__ = [
     "Profile",
     "Settings",
     "Store",
+    "Update",
     "app_data_dir",
     "default_library",
     "plural",
@@ -76,6 +79,7 @@ class Bridge(QObject):
     services_changed = Signal()
     eject_finished = Signal(str, bool, str)  # path, ok, message
     preview_ready = Signal(int, object, object, str)  # token, before, after, error
+    update_changed = Signal()
     _deliver = Signal(object, object)
 
     def __init__(
@@ -96,9 +100,13 @@ class Bridge(QObject):
         self.watcher = cards.CardWatcher(self._on_core_event, watch_interval)
         self.watcher.set_paused(store.settings.paused)
         self.connected: dict[str, bool] = dict.fromkeys(SERVICES, False)
-        self.builtin_keys = {s: uploaders.has_builtin_keys(s) for s in SERVICES}
+        self.has_keys: dict[str, bool] = dict.fromkeys(SERVICES, False)
         self._sample: tuple[str, Any] | None = None
         self._sample_lock = threading.Lock()
+        self.update: Update | None = None  # a newer published version, once known
+        self._update_timer = QTimer(self)
+        self._update_timer.setInterval(updates.CHECK_EVERY_HOURS * 3_600_000)
+        self._update_timer.timeout.connect(self.check_for_updates)
         self._deliver.connect(self._on_deliver, Qt.ConnectionType.QueuedConnection)
 
     # ------------------------------------------------------------- lifecycle
@@ -112,6 +120,7 @@ class Bridge(QObject):
         if self._closed:
             return
         self._closed = True
+        self._update_timer.stop()
         self.watcher.stop()
         self.pipeline.stop()
         self._io.shutdown(wait=True)
@@ -276,14 +285,70 @@ class Bridge(QObject):
         self.update_settings(start_at_login=enabled)
         self.run(lambda: autostart.set_start_at_login(enabled))
 
+    # --------------------------------------------------------------- updates
+    def watch_updates(self) -> None:
+        """Look for a newer version now, then once a day while the app stays open."""
+        self._update_timer.start()
+        self.check_for_updates()
+
+    def check_for_updates(self) -> None:
+        if not self.settings.check_updates:
+            return
+
+        def done(result: Any) -> None:
+            # A failed check says nothing, so it never withdraws a known update.
+            if isinstance(result, Update) and self.settings.check_updates:
+                if result != self.update:
+                    self.update = result
+                    self.update_changed.emit()
+
+        self.run(lambda: updates.check(__version__), done)
+
+    def set_check_updates(self, enabled: bool) -> None:
+        self.update_settings(check_updates=enabled)
+        if enabled:
+            self.check_for_updates()
+        elif self.update is not None:
+            self.update = None
+            self.update_changed.emit()
+
+    def finish_first_run(self) -> None:
+        """A new install has nothing "new" to announce, so this version counts as seen."""
+        self.update_settings(first_run_done=True, seen_version=__version__)
+
+    def whats_new(self, done: Callable[[str, list[str]], None]) -> None:
+        """Once per version: hand this version's changes to ``done``, if it has any."""
+        seen = self.settings.seen_version
+        if seen == __version__:
+            return
+        self.update_settings(seen_version=__version__)
+        if seen and not updates.is_newer(__version__, seen):
+            return  # an older build was installed over a newer one
+
+        def deliver(result: Any) -> None:
+            if isinstance(result, list) and result:
+                done(__version__, result)
+
+        self.run(lambda: updates.whats_new(__version__), deliver)
+
+    def skip_update(self) -> None:
+        """Stop offering this version in the main window. Settings still lists it."""
+        if self.update is not None:
+            self.update_settings(skipped_update=self.update.version)
+
+    def open_update_page(self) -> None:
+        if self.update is not None:
+            self.open_url(self.update.url)
+
     # -------------------------------------------------------------- services
     def refresh_services(self) -> None:
-        def check() -> dict[str, bool]:
-            return {service: uploaders.is_connected(service) for service in SERVICES}
+        def check() -> dict[str, tuple[bool, bool]]:
+            return {s: (uploaders.is_connected(s), uploaders.has_api_keys(s)) for s in SERVICES}
 
         def done(result: Any) -> None:
             if isinstance(result, dict):
-                self.connected = result
+                self.connected = {s: found[0] for s, found in result.items()}
+                self.has_keys = {s: found[1] for s, found in result.items()}
                 self.services_changed.emit()
 
         self.run(check, done)
@@ -321,6 +386,9 @@ class Bridge(QObject):
             done(result)
 
         self.run(job, finished)
+
+    def open_api_key_page(self, service: str) -> None:
+        self.open_url(uploaders.API_KEY_PAGES[service])
 
     def disconnect_service(self, service: str) -> None:
         self.run(lambda: uploaders.disconnect(service), lambda _result: self.refresh_services())

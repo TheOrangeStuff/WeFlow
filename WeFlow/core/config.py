@@ -79,6 +79,9 @@ class Settings:
     start_at_login: bool = False
     first_run_done: bool = False
     sample_photo: str = ""
+    check_updates: bool = True
+    skipped_update: str = ""
+    seen_version: str = ""  # the version whose "What's new" was last shown
 
 
 @dataclass
