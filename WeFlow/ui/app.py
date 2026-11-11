@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import QLockFile
+from PySide6.QtCore import QLockFile, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
@@ -67,14 +67,15 @@ class App:
 
 
 def run(argv: list[str] | None = None) -> int:
-    qt = QApplication(sys.argv if argv is None else argv)
+    args = sys.argv if argv is None else argv
+    smoke_test = "--smoke-test" in args  # packaging check: start, show, exit 0
+    qt = QApplication([a for a in args if a != "--smoke-test"])
     qt.setApplicationName("WeFlow")
     qt.setApplicationDisplayName("WeFlow")
     qt.setQuitOnLastWindowClosed(False)
     theme_module.install(qt)
     theme_module.preload_icons()
-    icon = theme_module.ICON_DIR / "app.png"
-    qt.setWindowIcon(QIcon(str(icon)))
+    qt.setWindowIcon(QIcon(str(theme_module.ICON_DIR / "app.png")))
 
     data_dir = app_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -86,13 +87,15 @@ def run(argv: list[str] | None = None) -> int:
     store = Store(data_dir)
     store.load()
     bridge = Bridge(store)
-    if not store.settings.first_run_done:
+    if not store.settings.first_run_done and not smoke_test:
         wizard = FirstRun(bridge)
         if not wizard.exec():
             bridge.shutdown()
             return 0
     app = App(qt, bridge)
     app.start()
+    if smoke_test:
+        QTimer.singleShot(2000, app.quit)
     code = qt.exec()
     bridge.shutdown()
     lock.unlock()

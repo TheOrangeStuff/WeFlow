@@ -401,3 +401,38 @@ def test_stop_is_quick_and_idempotent(store: Store, make_pipeline: PipelineFacto
     pipeline.stop(timeout=5)
     assert time.monotonic() - started < 2
     assert pipeline.snapshot() == [] and not pipeline.has_pending()
+
+
+def test_unexpected_uploader_crash_never_strands_a_photo(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    class Buggy(FakeUploader):
+        def upload(self, path: Path, event: Profile) -> str:
+            if self.upload_calls < 3:
+                self.upload_calls += 1
+                raise RuntimeError("bug in the uploader")
+            return super().upload(path, event)
+
+    event = flickr_event(store)
+    fake = Buggy()
+    pipeline = make_pipeline(fake)
+    batch = pipeline.submit(card, event, "CARD_A", is_card=True)
+    done = recorder.wait_state(batch.id, "done")
+    assert done.uploaded == NEW_PHOTOS and len(set(fake.uploads)) == NEW_PHOTOS
+    assert all("bug in the uploader" not in n.message for n in recorder.notices())  # NFR-09
+
+
+def test_nfr06_keychain_failure_is_plain_and_permanent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from WeFlow.core import secrets, uploaders
+
+    def locked(name: str) -> str:
+        raise secrets.SecretsError("The system keychain is not available.")
+
+    monkeypatch.setattr(secrets, "get_secret", locked)
+    assert uploaders.is_connected("smugmug") is False
+    for uploader in (uploaders.SmugMugUploader(), uploaders.FlickrUploader()):
+        with pytest.raises(UploadError) as caught:
+            uploader.upload(tmp_path / "a.jpg", Profile(name="G", album="KEY"))
+        assert caught.value.permanent and "keychain" in caught.value.message

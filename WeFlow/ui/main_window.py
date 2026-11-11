@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QShowEvent
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -49,11 +49,11 @@ class MainWindow(QMainWindow):
         self._shown_batch: Batch | None = None
         self._rows: dict[int, CardRow] = {}
         self._status = "idle"
+        self._focus_cleared = False
 
         page = QWidget()
         page.setObjectName("Page")
         page.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-        page.setFocus()  # no control starts out focused; Tab enters the top bar
         self.setCentralWidget(page)
 
         # 1. Top bar: name, Pause/Resume, Settings. Nothing else is always visible.
@@ -386,6 +386,12 @@ class MainWindow(QMainWindow):
     def import_folder(self, folder: str) -> None:
         """FR-18: run the same pipeline on any folder."""
         self.bridge.submit(folder, os.path.basename(folder.rstrip("/\\")) or folder, False)
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if not self._focus_cleared:  # no control starts out focused; Tab enters the top bar
+            self._focus_cleared = True
+            self.centralWidget().setFocus()
 
     # ----------------------------------------------------------------- close
     def closeEvent(self, event: QCloseEvent) -> None:

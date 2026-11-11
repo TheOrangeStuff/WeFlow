@@ -476,10 +476,14 @@ class Pipeline:
                 event,
                 self._budget.reserve,
             )
-        except imaging.ProcessError as exc:
-            photo.status, photo.failed_stage, photo.error = "failed", "process", str(exc)
+        except Exception as exc:
+            message = str(exc)
+            if not isinstance(exc, imaging.ProcessError):
+                log.exception("processing %s failed unexpectedly", photo.name)
+                message = "This photo could not be processed. Press Retry."
+            photo.status, photo.failed_stage, photo.error = "failed", "process", message
             state.put_photo(photo)
-            log.warning("processing %s failed: %s", photo.name, exc)
+            log.warning("processing %s failed: %s", photo.name, message)
         else:
             photo.status, photo.error = "processed", ""
             upload = batch.destination != "none"
@@ -527,7 +531,12 @@ class Pipeline:
                 state.put_photo(photo)
                 stage = "album"
             uploader.add_to_album(photo.remote_id, event)
-        except UploadError as exc:
+        except Exception as caught:
+            if isinstance(caught, UploadError):
+                exc = caught
+            else:  # a bug or an unplanned failure: keep the photo moving, never drop it
+                log.exception("upload of %s failed unexpectedly", photo.name)
+                exc = UploadError("The upload hit a problem. WeFlow will keep trying.")
             photo.attempts += 1
             photo.error = exc.message
             if exc.permanent or photo.attempts >= MAX_ATTEMPTS:

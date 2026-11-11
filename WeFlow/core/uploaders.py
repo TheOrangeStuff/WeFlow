@@ -56,6 +56,10 @@ def _expired(service: str) -> UploadError:
     return UploadError(f"{service} sign-in has expired. Reconnect it in Settings.", permanent=True)
 
 
+def _keychain_locked() -> UploadError:
+    return UploadError("The system keychain is locked. Unlock it, then press Retry.", True)
+
+
 def _offline(service: str) -> UploadError:
     return UploadError(f"Can't reach {service}. WeFlow will keep trying.")
 
@@ -81,8 +85,11 @@ def has_builtin_keys(service: str) -> bool:
 
 
 def is_connected(service: str) -> bool:
-    key, secret = api_credentials(service)
-    return bool(key and secret and secrets.get_secret(f"{service}_token"))
+    try:
+        key, secret = api_credentials(service)
+        return bool(key and secret and secrets.get_secret(f"{service}_token"))
+    except secrets.SecretsError:
+        return False
 
 
 def disconnect(service: str) -> None:
@@ -183,9 +190,12 @@ class SmugMugUploader:
     def _session(self) -> Any:
         from requests_oauthlib import OAuth1Session
 
-        key, secret = api_credentials("smugmug")
-        token = secrets.get_secret(secrets.SMUGMUG_TOKEN)
-        token_secret = secrets.get_secret(secrets.SMUGMUG_TOKEN_SECRET)
+        try:
+            key, secret = api_credentials("smugmug")
+            token = secrets.get_secret(secrets.SMUGMUG_TOKEN)
+            token_secret = secrets.get_secret(secrets.SMUGMUG_TOKEN_SECRET)
+        except secrets.SecretsError as exc:
+            raise _keychain_locked() from exc
         if not (key and secret and token and token_secret):
             raise _not_connected("SmugMug")
         cached = getattr(self._local, "session", None)
@@ -291,18 +301,21 @@ def flickr_tags(keywords: list[str]) -> str:
 def _flickr_client(with_token: bool) -> Any:
     import flickrapi  # type: ignore[import-untyped]
 
-    key, secret = api_credentials("flickr")
+    try:
+        key, secret = api_credentials("flickr")
+        stored = secrets.get_secret(secrets.FLICKR_TOKEN) if with_token else ""
+        stored_secret = secrets.get_secret(secrets.FLICKR_TOKEN_SECRET) if with_token else ""
+    except secrets.SecretsError as exc:
+        raise _keychain_locked() from exc
     if not key or not secret:
         if with_token:
             raise _not_connected("Flickr")
         raise UploadError("Enter a Flickr API key first.", permanent=True)
     token = None
     if with_token:
-        value = secrets.get_secret(secrets.FLICKR_TOKEN)
-        token_secret = secrets.get_secret(secrets.FLICKR_TOKEN_SECRET)
-        if not value or not token_secret:
+        if not stored or not stored_secret:
             raise _not_connected("Flickr")
-        token = flickrapi.auth.FlickrAccessToken(value, token_secret, "write")
+        token = flickrapi.auth.FlickrAccessToken(stored, stored_secret, "write")
     # store_token=False keeps flickrapi from writing tokens to its own plain file.
     return flickrapi.FlickrAPI(key, secret, token=token, store_token=False, format="parsed-json")
 
