@@ -1,7 +1,7 @@
 # Decisions and deviations from SPEC.md
 
-Each entry says what was chosen and why. Entries marked **(ask)** are worth a second
-opinion because they are hard to undo or the spec pointed another way.
+Each entry says what was chosen and why. Entries marked **(confirmed)** were put to the
+owner and accepted on 2026-11-11.
 
 ## Process
 
@@ -11,10 +11,11 @@ opinion because they are hard to undo or the spec pointed another way.
    could not be checked.
 2. **Milestones were built back to back** without stopping for review after each,
    at the owner's request. Each still has its own CHANGELOG section.
-3. **Legacy secret names are a guess.** The migration (§4.4) moves these keys out of a
-   v0.1 `settings.json` if present: `smugmug_api_key`, `smugmug_api_secret`,
-   `smugmug_token`, `smugmug_token_secret`, and the same four for `flickr_`. If v0.1 used
-   other names, add them to `LEGACY_SECRET_KEYS` in `core/config.py`. **(ask)**
+3. **Legacy secret names are a guess, and will stay one.** The owner no longer has the
+   v0.1 code. The migration (§4.4) moves these keys out of a v0.1 `settings.json` if
+   present: `smugmug_api_key`, `smugmug_api_secret`, `smugmug_token`,
+   `smugmug_token_secret`, and the same four for `flickr_`. Anyone whose old file used
+   other names simply connects again in Settings.
 
 ## Dependencies and tooling
 
@@ -44,7 +45,7 @@ opinion because they are hard to undo or the spec pointed another way.
 11. **`state.json` plus `journal.jsonl`.** To save after every file transition (NFR-05)
     without rewriting the whole file thousands of times, each change is appended to
     `.WeFlow/journal.jsonl` and folded into `state.json` every 500 entries and on exit.
-    Loading reads both. A torn last line (kill mid-write) is ignored. **(ask)**
+    Loading reads both. A torn last line (kill mid-write) is ignored. **(confirmed)**
 12. **Batch gained three fields:** `destination` (the event's destination when the batch
     started, so later edits to the event do not strand it), `verified` (every file copied
     and checked), and `previous_session`. Batch ids are millisecond timestamps, unique
@@ -52,7 +53,7 @@ opinion because they are hard to undo or the spec pointed another way.
 13. **A batch stays in `safe` until its first photo is processed**, then moves to
     `processing`. "Safe to remove" in the window does not depend on that: it shows while
     `verified` is true and the card is still in, and it wins over Processing, Uploading,
-    Held, Done and Attention until the card comes out. **(ask)**
+    Held, Done and Attention until the card comes out. **(confirmed)**
 14. **After a copy error, photos that did copy are still processed and uploaded.** The
     batch stays `error` (never safe). Re-inserting the card copies only what is missing.
     A batch that was mid-copy when the app was killed becomes `error` on the next launch.
@@ -71,7 +72,7 @@ opinion because they are hard to undo or the spec pointed another way.
 19. **Watermark numbers.** `watermark_scale` is the watermark's width as a fraction of the
     photo's short edge (default 0.18); `watermark_margin` is a fraction of the short edge
     (default 0.03); opacity default 0.7; position default bottom right. v0.1's values
-    were not available. **(ask)**
+    were not available. **(confirmed)**
 20. **Retries.** Temporary upload errors follow FR-33. A failed processing step is not
     retried automatically (a damaged file stays damaged); Retry runs it again.
     Unexpected exceptions in an uploader count as temporary so no photo is ever dropped.
@@ -80,7 +81,8 @@ opinion because they are hard to undo or the spec pointed another way.
     tokens to its own plain SQLite file, against NFR-06.
 23. **The app's own API keys** are baked in at packaging time from environment variables
     (`packaging/write_builtin_keys.py`). Without them the build works and users enter
-    their own key in Settings. No keys were available for this build. **(ask)**
+    their own key in Settings. The owner will obtain keys; until the four `WEFLOW_*`
+    repository secrets are set, builds ship without them (see `packaging/README.md`).
 24. **Fake volumes "eject" successfully without touching anything.** Linux is supported
     for development only (`/media/$USER`, `/run/media/$USER`, `umount`).
 
@@ -99,7 +101,7 @@ opinion because they are hard to undo or the spec pointed another way.
 27. **Type sizes are pixels** (28, 17, 15, 13, 12, 11), so both platforms match.
 28. **Three always-visible controls** (CLAUDE.md): Pause, Settings and Switch. The
     "Earlier cards" list and the Activity handle appear only once there is something in
-    them. "Import folder…" (FR-18) lives in the Switch popover. **(ask)**
+    them. "Import folder…" (FR-18) lives in the Switch popover. **(confirmed)**
 29. **Release and Retry act on the event of the batch shown**, which is the active event
     unless the user switched events mid-job.
 30. **Deleting an event** takes two clicks on the same button ("Delete" → "Really
