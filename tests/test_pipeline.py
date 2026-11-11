@@ -385,6 +385,8 @@ def test_state_survives_torn_journal_line(store: Store, tmp_path: Path) -> None:
     state.put_batch(Batch(id=1, event_id="e"))
     state.put_photo(PhotoRecord("a.jpg", "h1", batch_id=1))
     state.sync()
+    assert state._journal is not None
+    state._journal.close()  # the process died: its handle is gone
     with open(state.journal_path, "a", encoding="utf-8") as fh:
         fh.write('{"photo": {"name": "b.jpg", "sha2')  # the kill landed mid-write
     loaded = EventState(tmp_path / "ev")

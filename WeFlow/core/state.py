@@ -178,8 +178,14 @@ class EventState:
             if self._journal is not None:
                 self._journal.close()
                 self._journal = None
-            with contextlib.suppress(OSError):
+            try:
                 self.journal_path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                # Windows refuses to delete a file something else has open; empty it instead.
+                with contextlib.suppress(OSError), open(self.journal_path, "w"):
+                    pass
             self._pending = 0
 
     def close(self) -> None:
