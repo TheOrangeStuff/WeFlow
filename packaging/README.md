@@ -14,6 +14,20 @@ The Windows build needs [Inno Setup 6](https://jrsoftware.org/isinfo.php).
 macOS builds are per architecture: run the script on Apple silicon for arm64 and
 on an Intel Mac for x86_64.
 
+## Releasing
+
+1. Set the version in `WeFlow/__init__.py`, `pyproject.toml` and
+   `packaging/WeFlow.spec`, and commit.
+2. Tag that commit and push the tag:
+
+   ```bash
+   git tag v1.0.0 && git push origin v1.0.0
+   ```
+
+CI tests and builds the tag, then the **Release** job publishes the installers to a
+GitHub Release called `v1.0.0`. The job stops if the tag does not match
+`WeFlow.__version__`. Running it again for the same tag replaces the files.
+
 ## Signing and notarisation
 
 Nothing secret lives in the repo. The scripts read these environment variables

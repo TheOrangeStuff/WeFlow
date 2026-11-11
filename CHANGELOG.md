@@ -17,6 +17,7 @@ real card, a real SmugMug or Flickr account, or an installed build; see
 - PyInstaller one-folder spec; `.app` + `.dmg` script for macOS; Inno Setup installer for Windows.
 - Signing and notarisation hooks that read credentials from environment variables.
 - App icon (`packaging/make_icons.py`), `--smoke-test` launch check, CI build jobs with artifacts.
+- Pushing a `v<version>` tag publishes the installers to a GitHub Release.
 
 ### M5 — Event editor, Settings, first run
 - Event editor (640 px): Destination, Look, Watermark, collapsed "More", inline validation.

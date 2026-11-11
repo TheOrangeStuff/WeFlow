@@ -112,6 +112,16 @@ owner and accepted on 2026-11-11.
 33. **Closing the window quits the app when nothing is pending**; otherwise it hides to
     the tray. Only one copy of WeFlow runs at a time.
 
+## Releases
+
+34. **Installers are published to a GitHub Release when a version tag is pushed.** SPEC
+    M6 only asks for CI artifacts, but those sit inside a workflow run and expire. Pushing
+    `v<version>` runs the usual tests and builds, then the **Release** job attaches the
+    `.dmg` and `.exe` files to a release of that name. The tag must match
+    `WeFlow.__version__`, or the job fails before publishing. Pushes to `main` still
+    produce artifacts only. If the optional Intel build fails, the release goes out
+    without the x86_64 `.dmg`. **(confirmed)**
+
 ## Not verified yet
 
 These need hardware, accounts or other operating systems (see `docs/manual-test.md`):
