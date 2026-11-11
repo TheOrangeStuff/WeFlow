@@ -153,7 +153,7 @@ QLabel {{ background: transparent; }}
 {type_rules}
 QLabel[tinted="true"] {{ color: {t["text"]}; }}
 QLabel[type="error"] {{ font-size: 12px; color: {t["bad-strong"]}; }}
-QLabel[type="link"] {{ font-size: 12px; color: {t["accent"]}; }}
+QLabel[type="thumb"] {{ background: {t["border"]}; border-radius: 6px; }}
 
 QFrame#EventCard {{ background: {t["surface-2"]}; border-radius: {RADIUS_CARD}px; }}
 QFrame#Card {{ background: {t["surface"]}; border: 1px solid {t["border"]};
@@ -188,6 +188,11 @@ QPushButton[kind="quiet"] {{ background: transparent; border: 1px solid transpar
     color: {t["text-2"]}; font-size: 12px; font-weight: 400; padding: 0 8px; }}
 QPushButton[kind="quiet"]:hover {{ color: {t["text"]}; background: {t["hover"]}; }}
 QPushButton[kind="quiet"]:focus {{ border: 2px solid {t["accent"]}; padding: 0 7px; }}
+QPushButton[kind="link"] {{ background: transparent; border: 1px solid transparent;
+    color: {t["text-2"]}; font-size: 12px; font-weight: 400; padding: 0 2px;
+    text-decoration: underline; }}
+QPushButton[kind="link"]:hover {{ color: {t["text"]}; background: transparent; }}
+QPushButton[kind="link"]:focus {{ border: 2px solid {t["accent"]}; padding: 0 1px; }}
 QPushButton[kind="outline"] {{ background: transparent; border: 1px solid {t["text-2"]};
     color: {t["text"]}; }}
 QPushButton[kind="outline"]:hover {{ background: {t["hover"]}; }}
