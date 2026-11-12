@@ -90,6 +90,47 @@ def test_m5_edit_event_and_frozen_folder(qtbot, window, bridge, store, event) ->
     assert window.event_card.summary.text() == "SmugMug · Gala · Held"
 
 
+def test_fr39_pick_smugmug_gallery_from_list(
+    qtbot, window, bridge, store, event, fake_uploader
+) -> None:  # type: ignore[no-untyped-def]
+    fake_uploader.albums = [
+        uploaders.AlbumChoice("/api/v2/album/B2", "Smith Wedding", "NB2", "Weddings"),
+        uploaders.AlbumChoice("/api/v2/album/A1", "Gala", "NA1", "Events"),
+        uploaders.AlbumChoice("/api/v2/album/C3", "Gala", "NC3", "Archive"),
+    ]
+    event.destination, event.album = "smugmug", "https://me.smugmug.com/Events/Gala/n-NA1"
+    bridge.save_event(event)
+    editor = EventEditor(bridge, bridge.active(), window)
+    qtbot.addWidget(editor)
+    editor.show()
+    qtbot.waitUntil(lambda: editor.gallery.count() == 3, timeout=3000)
+    assert editor.album.text() == "Gala — Events"  # the pasted link, shown by name
+    assert not editor.album_hint.isVisible()
+    editor.gallery.setCurrentIndex(0)
+    assert editor.album.text() == "Smith Wedding"
+    qtbot.mouseClick(editor.save, Qt.MouseButton.LeftButton)
+    saved = store.get(event.id)
+    assert (saved.album, saved.album_name) == ("/api/v2/album/B2", "Smith Wedding")
+    assert window.event_card.summary.text() == "SmugMug · Smith Wedding"
+
+    # Reopened while the list is unavailable: the saved gallery is kept as it is.
+    fake_uploader.list_error = UploadError("SmugMug is not connected. Connect it in Settings.")
+    again = EventEditor(bridge, bridge.active(), window)
+    qtbot.addWidget(again)
+    again.show()
+    qtbot.waitUntil(lambda: again.album_hint.text().startswith("SmugMug is not"), timeout=3000)
+    assert again.album.text() == "Smith Wedding" and again.save.isEnabled()
+    assert (again.current().album, again.current().album_name) == (
+        "/api/v2/album/B2",
+        "Smith Wedding",
+    )
+    again.album.setText("https://me.smugmug.com/Other/n-Zz9")  # pasting still works
+    assert (again.current().album, again.current().album_name) == (
+        "https://me.smugmug.com/Other/n-Zz9",
+        "",
+    )
+
+
 def test_m5_inline_validation_disables_save(qtbot, window, bridge, store, event, watermark) -> None:  # type: ignore[no-untyped-def]
     store.create_event("Taken Name", activate=False)
     editor = EventEditor(bridge, bridge.active(), window)

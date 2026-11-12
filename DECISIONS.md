@@ -206,6 +206,18 @@ owner and accepted on 2026-11-11.
     with "Hold uploads" on: that hold is the event's own choice.
 56. **The Held panel reads "Ready to upload"** with an **Upload** button (was "Ready for
     review" / Release), so Paced and Hold uploads ask the same plain question.
+57. **Gallery picker (1.4.0, FR-39) stores the AlbumUri** in the existing `album` field,
+    which the uploader already accepts, so uploads and older events are unchanged. The
+    new `album_name` field is display only; older versions ignore it. **(owner's choice)**
+58. **One editable dropdown, not a dropdown plus a separate link box.** Its text is the
+    album field: a listed name maps to that gallery, anything else is used as typed.
+    A pasted `/n-` link or AlbumUri is shown by its gallery name once the list loads.
+59. **Same-named galleries show their folder** ("Gala — Events") so they can be told
+    apart. The list is newest first and stops at 2,000 galleries.
+60. **The first-run wizard keeps its plain album box.** The user may not be signed in yet
+    there; the event editor offers the list afterwards.
+61. **Creating a SmugMug gallery from WeFlow is deferred** to a later version, at the
+    owner's request. **(owner's choice)**
 
 ## Not verified yet
 

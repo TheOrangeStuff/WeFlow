@@ -208,3 +208,88 @@ def test_fake_uploader_contract(tmp_path: Path) -> None:
     with pytest.raises(UploadError) as caught:
         FakeUploader(fail_times=1, permanent=True).upload(photo, event)
     assert caught.value.permanent
+
+
+# ----------------------------------------------------------- FR-39: pick a gallery
+class ListingSession:
+    """Answers SmugMug's authuser and paged album-list calls."""
+
+    def __init__(self, pages: list[list[dict[str, Any]]], status: int = 200) -> None:
+        self.pages, self.status = pages, status
+        self.calls: list[tuple[str, dict[str, Any] | None]] = []
+
+    def get(
+        self, url: str, params: dict[str, Any] | None, headers: dict[str, str], timeout: Any
+    ) -> FakeResponse:
+        self.calls.append((url, params))
+        if url.endswith("!authuser"):
+            uris = {"UserAlbums": {"Uri": "/api/v2/user/me!albums"}}
+            return FakeResponse(self.status, {"Response": {"User": {"Uris": uris}}})
+        index = (int(params["start"]) - 1) // uploaders.SMUGMUG_PAGE if params else 0
+        more = index + 1 < len(self.pages)
+        pages = {"Count": uploaders.SMUGMUG_PAGE, "NextPage": "next" if more else None}
+        body = {"Response": {"Album": self.pages[index], "Pages": pages}}
+        return FakeResponse(self.status, body)
+
+
+def gallery(key: str, name: str, date: str, folder: str = "Events") -> dict[str, Any]:
+    return {
+        "Uri": f"/api/v2/album/{key}",
+        "Name": name,
+        "NodeID": f"N{key}",
+        "UrlPath": f"/{folder}/{name.replace(' ', '-')}",
+        "Date": date,
+    }
+
+
+def test_fr39_smugmug_lists_every_page_newest_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = ListingSession(
+        [
+            [gallery("A1", "Old Gala", "2025-01-01T00:00:00+00:00")],
+            [gallery("B2", "Smith Wedding", "2026-10-01T00:00:00+00:00", "Weddings")],
+        ]
+    )
+    uploader = SmugMugUploader()
+    monkeypatch.setattr(uploader, "_session", lambda: session)
+    choices = uploader.list_albums()
+    assert [c.name for c in choices] == ["Smith Wedding", "Old Gala"]
+    assert choices[0] == uploaders.AlbumChoice(
+        "/api/v2/album/B2", "Smith Wedding", "NB2", "Weddings"
+    )
+    starts = [params["start"] for _, params in session.calls[1:] if params]
+    assert starts == [1, 1 + uploaders.SMUGMUG_PAGE]
+
+
+def test_fr39_smugmug_list_expired_sign_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    uploader = SmugMugUploader()
+    monkeypatch.setattr(uploader, "_session", lambda: ListingSession([], status=401))
+    with pytest.raises(UploadError, match="Reconnect it in Settings"):
+        uploader.list_albums()
+
+
+def test_fr39_flickr_lists_album_titles_newest_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeFlickr()
+    client.sets = [
+        {"id": "1", "title": {"_content": "Old Party"}, "date_create": "1600000000"},
+        {"id": "2", "title": {"_content": "Gala Night"}, "date_create": "1790000000"},
+        {"id": "3", "title": {"_content": "No Date"}},
+    ]
+    monkeypatch.setattr(uploaders, "_flickr_client", lambda with_token: client)
+    choices = uploaders.FlickrUploader().list_albums()
+    assert [c.name for c in choices] == ["Gala Night", "Old Party", "No Date"]
+    assert choices[0] == uploaders.AlbumChoice("Gala Night", "Gala Night")
+
+
+@pytest.mark.parametrize(
+    "album",
+    [
+        "/api/v2/album/B2",
+        "https://api.smugmug.com/api/v2/album/B2",
+        "https://me.smugmug.com/Weddings/Smith-Wedding/n-NB2",
+    ],
+)
+def test_fr39_match_album_forms(album: str) -> None:
+    wedding = uploaders.AlbumChoice("/api/v2/album/B2", "Smith Wedding", "NB2")
+    other = uploaders.AlbumChoice("/api/v2/album/A1", "Old Gala", "NA1")
+    assert uploaders.match_album([other, wedding], album) == wedding
+    assert uploaders.match_album([other], album) is None

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0 — 2026-11-11
+
+- Pick your gallery from a list. In an event, the SmugMug gallery (or Flickr album) box
+  now shows the galleries on your account, newest first. Type to search.
+- Pasting a gallery link or typing a Flickr album title still works.
+- Press the reload button next to the box to see galleries you just made.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.3.0 — 2026-11-11
 
 - New **Auto / Paced** switch at the top of the window. Auto works as before: insert a

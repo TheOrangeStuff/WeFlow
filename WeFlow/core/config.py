@@ -113,6 +113,7 @@ class Profile:
     folder: str = ""
     destination: str = "none"
     album: str = ""
+    album_name: str = ""  # the gallery's own name when picked from the list (FR-39)
     flickr_privacy: str = "private"
     keywords: str = ""
     auto_wb: bool = True
@@ -147,7 +148,7 @@ class Profile:
         if self.destination not in DESTINATIONS:
             errors["destination"] = "Choose where photos should go."
         elif self.destination == "smugmug" and not self.album.strip():
-            errors["album"] = "Paste the SmugMug gallery link."
+            errors["album"] = "Choose a SmugMug gallery or paste its link."
         elif self.destination == "flickr" and not self.album.strip():
             errors["album"] = "Type the Flickr album title."
         if self.flickr_privacy not in FLICKR_PRIVACY:

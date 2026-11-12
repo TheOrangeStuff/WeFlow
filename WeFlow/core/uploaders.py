@@ -34,6 +34,24 @@ class UploadError(Exception):
         self.permanent = permanent
 
 
+@dataclass(frozen=True)
+class AlbumChoice:
+    """One of the user's galleries or albums, offered in the event editor (FR-39).
+
+    ``value`` is what goes in the event's album field; ``node`` is the SmugMug
+    node id, so a pasted ``/n-`` link can be matched to its gallery.
+    """
+
+    value: str
+    name: str
+    node: str = ""
+    where: str = ""  # SmugMug folder path, to tell same-named galleries apart
+
+
+MAX_ALBUMS = 2000  # stop listing after this many, so a huge account stays quick
+SMUGMUG_PAGE = 100
+
+
 class Uploader(Protocol):
     def upload(self, path: Path, event: Profile) -> str:
         """Send the file; return the service's id for it."""
@@ -41,6 +59,10 @@ class Uploader(Protocol):
 
     def add_to_album(self, remote_id: str, event: Profile) -> None:
         """Put an uploaded photo in the event's album. Safe to repeat."""
+        ...
+
+    def list_albums(self) -> list[AlbumChoice]:
+        """The signed-in user's galleries or albums, newest first (FR-39)."""
         ...
 
 
@@ -180,6 +202,21 @@ def smugmug_album_ref(album: str) -> tuple[str, str]:
     return "uri", f"/api/v2/album/{key}"
 
 
+def match_album(choices: list[AlbumChoice], album: str) -> AlbumChoice | None:
+    """The listed gallery an album field points at: same value, AlbumUri or node id."""
+    text = album.strip()
+    if not text:
+        return None
+    for choice in choices:
+        if choice.value == text:
+            return choice
+    kind, value = smugmug_album_ref(text)
+    for choice in choices:
+        if (kind == "node" and choice.node == value) or (kind == "uri" and choice.value == value):
+            return choice
+    return None
+
+
 class SmugMugUploader:
     def __init__(self) -> None:
         self._albums: dict[str, str] = {}
@@ -280,6 +317,52 @@ class SmugMugUploader:
 
     def add_to_album(self, remote_id: str, event: Profile) -> None:
         """SmugMug uploads go straight into the gallery; nothing more to do."""
+
+    def _get_json(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        import requests
+
+        try:
+            response = self._session().get(
+                f"{SMUGMUG_API}{path}",
+                params=params,
+                headers={"Accept": "application/json"},
+                timeout=TIMEOUT[0],
+            )
+        except requests.RequestException as exc:
+            raise UploadError("Can't reach SmugMug. Check the connection and try again.") from exc
+        if response.status_code in (401, 403):
+            raise _expired("SmugMug")
+        if response.status_code != 200:
+            raise UploadError("SmugMug did not send the gallery list. Try again.")
+        try:
+            body = response.json()["Response"]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise UploadError("SmugMug did not send the gallery list. Try again.") from exc
+        return dict(body)
+
+    def list_albums(self) -> list[AlbumChoice]:
+        """Every gallery of the signed-in user, newest first (FR-39)."""
+        try:
+            path = str(self._get_json("/api/v2!authuser")["User"]["Uris"]["UserAlbums"]["Uri"])
+        except (KeyError, TypeError) as exc:
+            raise UploadError("SmugMug did not send the gallery list. Try again.") from exc
+        found: list[tuple[str, AlbumChoice]] = []
+        start = 1
+        while len(found) < MAX_ALBUMS:
+            body = self._get_json(path, {"start": start, "count": SMUGMUG_PAGE})
+            for album in body.get("Album") or []:
+                uri, name = album.get("Uri"), str(album.get("Name") or "").strip()
+                if not uri or not name:
+                    continue
+                folder = str(album.get("UrlPath") or "").rsplit("/", 1)[0].strip("/")
+                choice = AlbumChoice(str(uri), name, str(album.get("NodeID") or ""), folder)
+                found.append((str(album.get("Date") or ""), choice))
+            pages = body.get("Pages") or {}
+            if not pages.get("NextPage"):
+                break
+            start += int(pages.get("Count") or SMUGMUG_PAGE)
+        found.sort(key=lambda item: item[0], reverse=True)
+        return [choice for _, choice in found[:MAX_ALBUMS]]
 
 
 # -------------------------------------------------------------------- Flickr
@@ -411,6 +494,30 @@ class FlickrUploader:
             except Exception as exc:
                 raise _flickr_error(exc) from exc
 
+    def list_albums(self) -> list[AlbumChoice]:
+        """The signed-in user's Flickr albums, newest first (FR-39)."""
+        client = _flickr_client(with_token=True)
+        found: list[tuple[int, AlbumChoice]] = []
+        page = 1
+        try:
+            while len(found) < MAX_ALBUMS:
+                listing = client.photosets.getList(page=page, per_page=500)["photosets"]
+                for album in listing.get("photoset", []):
+                    title = str(album.get("title", {}).get("_content") or "").strip()
+                    if title:
+                        try:
+                            created = int(album.get("date_create") or 0)
+                        except (TypeError, ValueError):
+                            created = 0
+                        found.append((created, AlbumChoice(title, title)))
+                if page >= int(listing.get("pages", 1) or 1):
+                    break
+                page += 1
+        except Exception as exc:
+            raise _flickr_error(exc) from exc
+        found.sort(key=lambda item: item[0], reverse=True)  # stable: undated keep their order
+        return [choice for _, choice in found[:MAX_ALBUMS]]
+
     @staticmethod
     def _find_album(client: Any, title: str) -> str:
         page = 1
@@ -433,8 +540,15 @@ class FakeUploader:
     """
 
     def __init__(
-        self, fail_times: int = 0, permanent: bool = False, album_fail_times: int = 0
+        self,
+        fail_times: int = 0,
+        permanent: bool = False,
+        album_fail_times: int = 0,
+        albums: list[AlbumChoice] | None = None,
+        list_error: UploadError | None = None,
     ) -> None:
+        self.albums = list(albums or [])
+        self.list_error = list_error
         self.fail_times = fail_times
         self.album_fail_times = album_fail_times
         self.permanent = permanent
@@ -460,6 +574,11 @@ class FakeUploader:
             if self.album_calls <= self.album_fail_times:
                 raise UploadError("Fake album failure.", self.permanent)
             self.album_adds.append(remote_id)
+
+    def list_albums(self) -> list[AlbumChoice]:
+        if self.list_error is not None:
+            raise self.list_error
+        return list(self.albums)
 
 
 def make_uploader(destination: str) -> Uploader:

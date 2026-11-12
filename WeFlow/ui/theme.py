@@ -228,7 +228,8 @@ QLineEdit[invalid="true"] {{ border: 1px solid {t["bad"]}; }}
 QComboBox::drop-down {{ border: none; width: 24px; }}
 QComboBox::down-arrow {{ image: none; }}
 QSpinBox::up-button, QSpinBox::down-button {{ width: 0; border: none; }}
-QComboBox QAbstractItemView {{ background: {t["surface"]}; border: 1px solid {t["border"]};
+QComboBox QAbstractItemView, QListView#AlbumFinder {{ background: {t["surface"]};
+    border: 1px solid {t["border"]};
     border-radius: {RADIUS_CONTROL}px; padding: 4px; outline: none;
     selection-background-color: {t["surface-2"]}; selection-color: {t["text"]}; }}
 

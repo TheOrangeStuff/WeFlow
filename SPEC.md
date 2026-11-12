@@ -88,6 +88,7 @@ Fields carry over from v0.1 `Profile`, with these changes:
 | `folder` | str | slug of name at creation | **New.** Frozen at creation |
 | `destination` | `"none" \| "smugmug" \| "flickr"` | `"none"` | |
 | `album` | str | `""` | SmugMug gallery URL / AlbumUri / key, or Flickr album title |
+| `album_name` | str | `""` | *(1.4.0)* The gallery's name when picked from the list (FR-39); display only, `""` when typed or pasted |
 | `flickr_privacy` | enum | `"private"` | private, friends, family, friends+family, public |
 | `keywords` | str | `""` | comma-separated |
 | `auto_wb` / `wb_strength` | bool / float 0–1 | true / 0.6 | |
@@ -182,6 +183,11 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
 - **FR-35** Retry failed: resets attempts and requeues each photo at the stage where it failed.
 - **FR-36** On launch, resume every unfinished photo in every event.
 - **FR-37** Credentials are entered and connected in Settings. Store them through `core/secrets.py` only.
+- **FR-39** *(1.4.0)* In the event editor, the album field is a searchable dropdown of the signed-in user's galleries (SmugMug) or albums (Flickr), with a Reload button. Typing or pasting still works.
+  - SmugMug: `GET /api/v2!authuser` → `Uris.UserAlbums.Uri`, paged by `start`/`count`, newest first. Picking a gallery stores its AlbumUri in `album` and its name in `album_name`.
+  - Flickr: `photosets.getList`, newest first by `date_create`; picking stores the title in `album`, as typing does.
+  - The list loads off the UI thread. If it can't load (not signed in, offline), say why under the field and keep what is saved.
+  - Creating a SmugMug gallery from WeFlow is out of scope for now.
 
 ### 5.5 Pipeline mode *(1.3.0)*
 - **FR-38** An app-wide **Auto / Paced** switch (`Settings.paced`, default Auto).
@@ -255,7 +261,7 @@ The panel shows the most recent batch. The **4-step tracker** (Copy · Process �
 
 - **Event editor** — a sheet (macOS) or dialog (Windows), 640 px wide.
   - Left column holds 4 groups, each with a heading:
-    - **Destination:** where, album, privacy, keywords, hold toggle.
+    - **Destination:** where, album (a dropdown of the user's galleries, FR-39), privacy, keywords, hold toggle.
     - **Look:** auto WB with strength slider, auto tone.
     - **Watermark:** toggle, file picker with thumbnail, position as a 3×3 grid picker (corners + center only enabled), size slider, opacity slider.
     - **Export** *(1.2.0)*: preset picker (Save as preset… / Delete preset), file naming, custom text and start number (only when the rule uses them), an example file name, quality slider, Limit file size toggle and size.

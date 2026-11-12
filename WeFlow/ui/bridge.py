@@ -38,10 +38,17 @@ from WeFlow.core.logs import setup_logging
 from WeFlow.core.pipeline import ACTIVE_STATES, Pipeline, plural
 from WeFlow.core.state import Batch
 from WeFlow.core.updates import Update
-from WeFlow.core.uploaders import PendingAuth, Uploader, UploadError, service_name
+from WeFlow.core.uploaders import (
+    AlbumChoice,
+    PendingAuth,
+    Uploader,
+    UploadError,
+    service_name,
+)
 
 __all__ = [
     "ACTIVE_STATES",
+    "AlbumChoice",
     "DESTINATIONS",
     "FILE_NAMING",
     "FILE_SIZE_KB_MAX",
@@ -57,6 +64,7 @@ __all__ = [
     "Settings",
     "Store",
     "Update",
+    "UploadError",
     "app_data_dir",
     "default_library",
     "plural",
@@ -102,9 +110,8 @@ class Bridge(QObject):
         self._jobs = ThreadPoolExecutor(max_workers=3, thread_name_prefix="weflow-job")
         self._closed = False
         self.store.saver = self._save_later
-        self.pipeline = Pipeline(
-            store, self._on_core_event, uploader_factory or uploaders.make_uploader
-        )
+        self._uploader_factory = uploader_factory or uploaders.make_uploader
+        self.pipeline = Pipeline(store, self._on_core_event, self._uploader_factory)
         self.watcher = cards.CardWatcher(self._on_core_event, watch_interval)
         self.watcher.set_paused(store.settings.paused)
         self.pipeline.set_paced(store.settings.paced)
@@ -418,6 +425,22 @@ class Bridge(QObject):
             done(result)
 
         self.run(job, finished)
+
+    def list_albums(self, destination: str, done: Callable[[Any], None]) -> None:
+        """FR-39: fetch the user's galleries. ``done`` gets a list of ``AlbumChoice``
+        or an ``UploadError``."""
+
+        def job() -> list[AlbumChoice]:
+            try:
+                return self._uploader_factory(destination).list_albums()
+            except secrets.SecretsError as exc:
+                raise UploadError(f"{exc} Unlock it and try again.", True) from exc
+
+        self.run(job, done)
+
+    @staticmethod
+    def match_album(choices: list[AlbumChoice], album: str) -> AlbumChoice | None:
+        return uploaders.match_album(choices, album)
 
     def open_api_key_page(self, service: str) -> None:
         self.open_url(uploaders.API_KEY_PAGES[service])

@@ -15,7 +15,7 @@ from .common import Button, label
 
 def album_display(event: Profile) -> str:
     """A short, human form of the album field (gallery links can be long)."""
-    album = event.album.strip()
+    album = event.album_name.strip() or event.album.strip()
     if "://" in album or album.startswith("/"):
         parts = [p for p in re.split(r"[/?#]", album.split("://")[-1])[1:] if p]
         parts = [p for p in parts if not p.startswith("n-") and p not in ("api", "v2", "album")]
