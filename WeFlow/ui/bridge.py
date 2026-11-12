@@ -107,6 +107,7 @@ class Bridge(QObject):
         )
         self.watcher = cards.CardWatcher(self._on_core_event, watch_interval)
         self.watcher.set_paused(store.settings.paused)
+        self.pipeline.set_paced(store.settings.paced)
         self.connected: dict[str, bool] = dict.fromkeys(SERVICES, False)
         self.has_keys: dict[str, bool] = dict.fromkeys(SERVICES, False)
         self._sample: tuple[str, Any] | None = None
@@ -252,6 +253,14 @@ class Bridge(QObject):
 
     def release(self, event_id: str | None) -> None:
         self._io.submit(self._guard, lambda: self.pipeline.release_held(event_id))
+
+    def process(self, event_id: str | None) -> None:
+        """Paced mode: go ahead and process the photos waiting after copying."""
+        self._io.submit(self._guard, lambda: self.pipeline.process_ready(event_id))
+
+    def set_paced(self, paced: bool) -> None:
+        self.update_settings(paced=paced)
+        self._io.submit(self._guard, lambda: self.pipeline.set_paced(paced))
 
     def retry(self, event_id: str | None) -> None:
         self._io.submit(self._guard, lambda: self.pipeline.retry_failed(event_id))

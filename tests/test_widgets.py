@@ -21,7 +21,8 @@ HEADLINES = {
     "safe": "Safe to remove",
     "working-processing": "Processing",
     "working-uploading": "Uploading",
-    "held": "Ready for review",
+    "ready": "Safe to remove",
+    "held": "Ready to upload",
     "done": "All done",
     "attention": "Needs attention",
     "copy-error": "Don't remove yet — copy failed",
@@ -29,7 +30,8 @@ HEADLINES = {
 BUTTONS = {
     "paused": ["Resume"],
     "safe": ["Eject"],
-    "held": ["Release", "Open folder"],
+    "ready": ["Process", "Eject"],
+    "held": ["Upload", "Open folder"],
     "attention": ["Retry", "Details"],
     "copy-error": ["Retry"],
 }
@@ -71,7 +73,8 @@ def test_ui02_sublines_match_spec() -> None:
     assert sub("copying") == "100 of 248 photos"
     assert sub("safe") == "EOS_DIGITAL · 248 photos copied and verified"
     assert sub("working-processing") == "120 of 248 photos"
-    assert sub("held") == "248 photos held"
+    assert sub("ready") == "248 photos copied. Process and auto-tune them?"
+    assert sub("held") == "248 photos tuned. Upload them to SmugMug?"
     assert sub("done") == "248 photos uploaded to SmugMug"
     assert sub("copy-error").endswith("Re-insert the card to try again.")
     assert sub("copy-error").count(".") <= 2  # NFR-09
@@ -131,7 +134,8 @@ def test_ui04_card_row_action_only_when_applicable(qtbot, themed) -> None:  # ty
     assert not row.action.isVisible()
     for state, text, name in [
         ("attention", "Retry", "retry"),
-        ("held", "Release", "release"),
+        ("ready", "Process", "process"),
+        ("held", "Upload", "release"),
         ("done", "Open folder", "open"),
     ]:
         row.set_batch(batch(state))

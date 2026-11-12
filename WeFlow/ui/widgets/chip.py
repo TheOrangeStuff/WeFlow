@@ -13,6 +13,7 @@ BATCH_CHIPS = {
     "safe": ("warn", "refresh-cw", "Processing"),
     "processing": ("warn", "refresh-cw", "Processing"),
     "uploading": ("warn", "cloud-upload", "Uploading"),
+    "ready": ("warn", "clock", "Waiting"),
     "held": ("warn", "clock", "Held"),
     "done": ("good", "check", "Done"),
     "attention": ("bad", "triangle-alert", "Needs attention"),

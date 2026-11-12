@@ -17,7 +17,7 @@ WeFlow is a desktop app (macOS + Windows) that copies JPEGs from a camera card, 
 - Tests and CI never call the real SmugMug or Flickr APIs. Use `FakeUploader`.
 - The design follows SPEC §7 exactly: sleek, modern, minimal. Use design tokens only; no hard-coded colours in widgets.
   - Colour is reserved for status, and always comes with an icon or a word.
-  - The working face may show at most 3 always-visible controls.
+  - The working face may show at most 4 always-visible controls (Pause, Settings, Switch event, Auto/Paced).
 
 ## Commands
 

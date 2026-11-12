@@ -23,6 +23,7 @@ BATCH_STATES = (
     "safe",
     "processing",
     "uploading",
+    "ready",  # paced mode: copied and verified, waiting for the go-ahead to process
     "held",
     "done",
     "error",
@@ -40,7 +41,7 @@ class PhotoRecord:
     status: str = "copied"  # copied | processed | uploaded | failed
     failed_stage: str = ""  # process | upload | album
     remote_id: str = ""
-    held: bool = False
+    held: bool = False  # waiting for the go-ahead to the next stage (process or upload)
     attempts: int = 0
     error: str = ""
     original: str = ""  # the camera's file name, without extension
@@ -72,6 +73,7 @@ class Batch:
     uploaded: int = 0
     failed: int = 0
     held: int = 0
+    ready: int = 0  # paced mode: copied photos waiting for the go-ahead to process
     error: str = ""
     started: float = 0.0
     finished: float = 0.0

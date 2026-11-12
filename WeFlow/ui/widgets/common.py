@@ -4,9 +4,17 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, QRectF, QSize, Qt
-from PySide6.QtGui import QKeyEvent, QPainter, QPaintEvent
-from PySide6.QtWidgets import QAbstractButton, QFrame, QLabel, QPushButton, QSizePolicy, QWidget
+from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QKeyEvent, QMouseEvent, QPainter, QPaintEvent
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QWidget,
+)
 
 from ..theme import theme
 
@@ -173,6 +181,55 @@ class Toggle(QAbstractButton):
             painter.setPen(pen)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(QRectF(1, 1, 34, 18), 9, 9)
+
+
+class ModeSwitch(QWidget):
+    """Auto ◯━ Paced: the pipeline mode. Either word, or the switch, flips it."""
+
+    toggled = Signal(bool)  # True = paced
+
+    def __init__(self, paced: bool = False) -> None:
+        super().__init__()
+        self.switch = Toggle(paced)
+        self.switch.setAccessibleName("Paced mode")
+        self.switch.setToolTip(
+            "Auto runs every step on its own. Paced asks before processing and before uploading."
+        )
+        self.auto_word = label("Auto", "secondary")
+        self.paced_word = label("Paced", "secondary")
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 8, 0)
+        row.setSpacing(8)
+        row.addWidget(self.auto_word)
+        row.addWidget(self.switch)
+        row.addWidget(self.paced_word)
+        self.switch.toggled.connect(self._changed)
+        self._mark(paced)
+
+    def is_paced(self) -> bool:
+        return self.switch.isChecked()
+
+    def set_paced(self, paced: bool) -> None:
+        if paced != self.switch.isChecked():
+            self.switch.blockSignals(True)
+            self.switch.setChecked(paced)
+            self.switch.blockSignals(False)
+            self.switch._set_knob(1.0 if paced else 0.0)
+        self._mark(paced)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if self.childAt(event.position().toPoint()) in (self.auto_word, self.paced_word):
+            word = self.childAt(event.position().toPoint())
+            self.switch.setChecked(word is self.paced_word)
+        super().mousePressEvent(event)
+
+    def _changed(self, paced: bool) -> None:
+        self._mark(paced)
+        self.toggled.emit(paced)
+
+    def _mark(self, paced: bool) -> None:
+        restyle(self.auto_word, type="secondary" if paced else "body")
+        restyle(self.paced_word, type="body" if paced else "secondary")
 
 
 class ThinProgress(QWidget):

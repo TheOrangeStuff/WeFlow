@@ -104,6 +104,7 @@ Fields carry over from v0.1 `Profile`, with these changes:
 ### 4.2 Batch
 One card insertion (or folder import). Fields as v0.1 `Batch`, plus a `state` enum:
 `copying → safe → processing → uploading → held → done` and `error` (copy failed) / `attention` (some photos failed).
+In Paced mode (FR-38) a batch goes `copying → ready` and waits there; `ready` is reached only after every file is verified.
 
 ### 4.3 Photo record (persisted per event in `.WeFlow/state.json`)
 `name, sha256, captured, batch_id, status (copied|processed|uploaded|failed), failed_stage, remote_id, held, attempts, error`.
@@ -182,6 +183,12 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
 - **FR-36** On launch, resume every unfinished photo in every event.
 - **FR-37** Credentials are entered and connected in Settings. Store them through `core/secrets.py` only.
 
+### 5.5 Pipeline mode *(1.3.0)*
+- **FR-38** An app-wide **Auto / Paced** switch (`Settings.paced`, default Auto).
+  - Auto: every step runs on its own, as in FR-12–FR-36.
+  - Paced: copied photos wait (`held` on a `copied` photo) until **Process** is pressed; processed photos wait until **Upload** is pressed (as FR-34).
+  - Switching to Auto sends waiting photos on, except photos held by the event's own `hold_uploads`.
+
 ---
 
 ## 6. Non-functional requirements
@@ -219,7 +226,7 @@ Default size 560×720; minimum 480×600. One column, 24 px outer padding. From t
 
 | # | Element | Spec |
 |---|---|---|
-| 1 | **Top bar** (48 px) | App name left (`type-heading`). Right: Pause/Resume toggle (icon + label) and a Settings gear icon button. **No other always-visible controls (UI-05).** |
+| 1 | **Top bar** (48 px) | App name left (`type-heading`). Right: an "Auto ◯ Paced" switch (FR-38), Pause/Resume toggle (icon + label) and a Settings gear icon button. **No other always-visible controls (UI-05).** |
 | 2 | **Event card** | `surface-2` background, radius 12, padding 16. Line 1: event name (`type-title`). Line 2 (`type-secondary`): destination · album · "Watermark" · "Held" (only those that apply). Right side: "Switch ▾" text button that opens a popover list of events + "New event…" + "Edit this event…". (UI-01) |
 | 3 | **Status panel** — takes the remaining vertical space above the list | States below (§7.3). Radius 16, padding 24. (UI-02, UI-03) |
 | 4 | **Earlier cards** list | Header `type-label` "Earlier cards". Rows 44 px: `Card label · N photos` left; status chip right; contextual action (Retry / Release / Open folder) as a text button left of the chip, **only when applicable** (UI-04, UI-06). Newest first. Rows from previous app sessions are hidden after they reach `done`. Max 5 visible, then the list scrolls. |
@@ -234,7 +241,8 @@ Default size 560×720; minimum 480×600. One column, 24 px outer padding. From t
 | Copying | `warn-tint` | "Copying — keep card in" | "<n> of <total> photos" | Tracker on step 1, progress bar |
 | **Safe** | `good-tint` + 2 px `good` border | "**Safe to remove**" | "<label> · <n> photos copied and verified" | **Eject** button (outline, `good`); tracker continues (Process/Upload) |
 | Working (no card in) | `surface-2` | "Processing" / "Uploading" | "<n> of <total>" | Tracker + progress bar |
-| Held | `warn-tint` | "Ready for review" | "<n> photos held" | "Open folder" and **Release** (primary) |
+| Ready (Paced) | `good-tint` + 2 px `good` border | "Safe to remove" (card in) / "Copied and verified" | "<n> photos copied. Process and auto-tune them?" | **Process** (primary), Eject while the card is in; tracker on Process |
+| Held | `warn-tint` | "Ready to upload" | "<n> photos tuned. Upload them to <destination>?" | **Upload** (primary) and "Open folder" |
 | Done | `good-tint` | "All done" | "<n> photos uploaded to <destination>" | Fades to Idle after 10 s |
 | Attention | `bad-tint` + 2 px `bad` border | "Needs attention" | One-line reason | **Retry** (primary), "Details" opens the drawer |
 | Copy error | `bad-tint` | "Don't remove yet — copy failed" | Reason + "Re-insert the card to try again" | Retry |

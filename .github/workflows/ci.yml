@@ -21,8 +21,8 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -38,7 +38,7 @@ jobs:
       - run: pytest -q
       - name: Screenshots for review
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: screenshots-${{ matrix.os }}
           path: tests/artifacts/*.png
@@ -58,8 +58,8 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -128,7 +128,7 @@ jobs:
           $run = Start-Process -FilePath "dist\WeFlow\WeFlow.exe" -ArgumentList "--smoke-test" -Wait -PassThru
           if ($run.ExitCode -ne 0) { throw "WeFlow exited with $($run.ExitCode)" }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: WeFlow-${{ matrix.name }}
           path: |
@@ -144,7 +144,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Tag matches the app version
         run: |
           version="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' WeFlow/__init__.py)"
@@ -170,7 +170,7 @@ jobs:
             exit 1
           fi
           echo "RELEASES_REPO=$repo" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: WeFlow-*
           path: dist

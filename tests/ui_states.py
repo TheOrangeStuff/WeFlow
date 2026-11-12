@@ -35,6 +35,7 @@ PANEL_STATES: dict[str, tuple[Batch | None, bool, bool]] = {
     "safe": (batch("processing", processed=31), True, False),
     "working-processing": (batch("processing", processed=120), False, False),
     "working-uploading": (batch("uploading", processed=248, uploaded=77), False, False),
+    "ready": (batch("ready", ready=248), True, False),
     "held": (batch("held", processed=248, held=248), False, False),
     "done": (batch("done", processed=248, uploaded=248), False, False),
     "attention": (
@@ -61,6 +62,7 @@ EXPECTED_PANEL = {
     "safe": "safe",
     "working-processing": "working",
     "working-uploading": "working",
+    "ready": "ready",
     "held": "held",
     "done": "done",
     "attention": "attention",

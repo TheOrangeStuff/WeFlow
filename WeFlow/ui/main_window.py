@@ -17,7 +17,16 @@ from PySide6.QtWidgets import (
 )
 
 from .bridge import Batch, Bridge, Profile
-from .widgets import ActivityDrawer, Button, CardRow, EventCard, StatusPanel, label, view_for
+from .widgets import (
+    ActivityDrawer,
+    Button,
+    CardRow,
+    EventCard,
+    ModeSwitch,
+    StatusPanel,
+    label,
+    view_for,
+)
 from .widgets.notice_bar import NoticeBar
 
 MAX_ROWS = 5
@@ -57,7 +66,10 @@ class MainWindow(QMainWindow):
         page.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.setCentralWidget(page)
 
-        # 1. Top bar: name, Pause/Resume, Settings. Nothing else is always visible.
+        # 1. Top bar: name, Auto/Paced, Pause/Resume, Settings. Nothing else is always
+        #    visible (UI-05, widened for the mode switch: DECISIONS 52).
+        self.mode = ModeSwitch(bridge.settings.paced)
+        self.mode.toggled.connect(self.bridge.set_paced)
         self.pause = Button("Pause", "quiet", icon="pause", icon_token="text-2")
         self.pause.clicked.connect(self._toggle_pause)
         self.settings = Button(kind="icon", icon="settings", icon_token="text-2", tip="Settings")
@@ -66,6 +78,7 @@ class MainWindow(QMainWindow):
         top.setContentsMargins(0, 0, 0, 0)
         top.setSpacing(4)
         top.addWidget(label("WeFlow", "heading"), 1)
+        top.addWidget(self.mode)
         top.addWidget(self.pause)
         top.addWidget(self.settings)
         top_bar = QWidget()
@@ -90,6 +103,7 @@ class MainWindow(QMainWindow):
         self.panel = StatusPanel()
         self.panel.eject_clicked.connect(self._eject)
         self.panel.release_clicked.connect(self._release)
+        self.panel.process_clicked.connect(self._process)
         self.panel.retry_clicked.connect(self._retry)
         self.panel.details_clicked.connect(lambda: self.drawer.open_drawer())
         self.panel.open_folder_clicked.connect(self._open_folder)
@@ -192,13 +206,14 @@ class MainWindow(QMainWindow):
             self._done_timer.stop()
 
         self._sync_rows([b for b in visible if current is None or b.id != current.id])
+        self.mode.set_paced(self.bridge.settings.paced)
         self.pause.setText("Resume" if paused else "Pause")
         self.pause.set_icon("play" if paused else "pause")
         self.activity.setVisible(bool(self.drawer.entries))
 
         if any(b.state in ("attention", "error") for b in visible):
             status = "attention"
-        elif view.state == "safe":
+        elif view.state == "safe" or (view.state == "ready" and view.card):
             status = "safe"
         elif self.bridge.has_pending():
             status = "working"
@@ -369,6 +384,10 @@ class MainWindow(QMainWindow):
         if self._shown_batch is not None:
             self.bridge.release(self._shown_batch.event_id)
 
+    def _process(self) -> None:
+        if self._shown_batch is not None:
+            self.bridge.process(self._shown_batch.event_id)
+
     def _retry(self) -> None:
         batch = self._shown_batch
         if batch is None:
@@ -387,6 +406,8 @@ class MainWindow(QMainWindow):
             self.bridge.retry(batch.event_id)
         elif name == "release":
             self.bridge.release(batch.event_id)
+        elif name == "process":
+            self.bridge.process(batch.event_id)
         elif name == "open":
             self.bridge.open_folder(self.bridge.event_folder(batch.event_id))
 

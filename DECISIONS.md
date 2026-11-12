@@ -193,6 +193,19 @@ owner and accepted on 2026-11-11.
 51. **Number fields get text margins in code.** Fusion ignores `QSpinBox` padding from
     the stylesheet, so the text sat against the border. This also fixes the existing
     resize field.
+52. **Auto / Paced mode (1.3.0, FR-38)** is one app-wide setting (`Settings.paced`),
+    not per event, because the owner asked for a switch at the top of the window. It
+    is a 4th always-visible control, so UI-05 now allows 4. **(owner's choice)**
+53. **Paced reuses `PhotoRecord.held`**: it now means "waiting for the go-ahead to the
+    next stage". A copied photo with `held` waits to be processed; a processed one waits
+    to be uploaded, as before. No new photo field, and older state files load unchanged.
+54. **New batch state `ready`** (copied and verified, waiting to process) with a
+    `Batch.ready` count. It is only reached after `verified`, so FR-15 holds. With the
+    card in, the panel still says "Safe to remove" and offers **Process** and **Eject**.
+55. **Switching to Auto releases waiting photos**, except processed photos of events
+    with "Hold uploads" on: that hold is the event's own choice.
+56. **The Held panel reads "Ready to upload"** with an **Upload** button (was "Ready for
+    review" / Release), so Paced and Hold uploads ask the same plain question.
 
 ## Not verified yet
 

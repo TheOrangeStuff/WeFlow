@@ -12,7 +12,8 @@ from .common import Button, label
 # batch state -> (button text, action name); other states have no action
 ACTIONS = {
     "attention": ("Retry", "retry"),
-    "held": ("Release", "release"),
+    "ready": ("Process", "process"),
+    "held": ("Upload", "release"),
     "done": ("Open folder", "open"),
 }
 

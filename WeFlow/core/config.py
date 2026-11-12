@@ -94,6 +94,7 @@ class Settings:
     library: str = ""
     active_event_id: str = ""
     paused: bool = False
+    paced: bool = False  # paced mode: ask before processing and before uploading
     card_sound: bool = True
     start_at_login: bool = False
     first_run_done: bool = False

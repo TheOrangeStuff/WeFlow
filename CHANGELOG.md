@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 — 2026-11-11
+
+- New **Auto / Paced** switch at the top of the window. Auto works as before: insert a
+  card and your photos go all the way to SmugMug or Flickr.
+- Paced asks before each big step. After copying, press **Process** to auto-tune the
+  photos. Once they are tuned, press **Upload** to send them.
+- Switching back to Auto sends any waiting photos on their way.
+- Held photos now show an **Upload** button, which replaces **Release**.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.2.0 — 2026-11-11
 
 - Name your finished photos the Lightroom way: custom name with a sequence number, date

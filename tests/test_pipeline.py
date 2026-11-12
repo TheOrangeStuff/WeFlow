@@ -220,6 +220,36 @@ def test_fr34_hold_then_release(
     assert pipeline.release_held(event.id) == 0
 
 
+def test_fr38_paced_waits_before_processing_and_uploading(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    event = flickr_event(store)
+    fake = FakeUploader()
+    pipeline = make_pipeline(fake)
+    pipeline.set_paced(True)
+    batch = pipeline.submit(card, event, "CARD_A", is_card=True)
+    ready = recorder.wait_state(batch.id, "ready")
+    assert ready.verified and ready.ready == NEW_PHOTOS and ready.processed == 0
+    assert not list((store.event_root(event) / "processed").glob("*.jpg"))
+    assert pipeline.process_ready(event.id) == NEW_PHOTOS
+    held = recorder.wait_state(batch.id, "held")
+    assert held.held == NEW_PHOTOS and fake.upload_calls == 0
+    assert pipeline.release_held(event.id) == NEW_PHOTOS
+    assert recorder.wait_state(batch.id, "done").uploaded == NEW_PHOTOS
+
+
+def test_fr38_switching_to_auto_sends_waiting_photos_on(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    event = flickr_event(store)
+    pipeline = make_pipeline(FakeUploader())
+    pipeline.set_paced(True)
+    batch = pipeline.submit(card, event, "CARD_A", is_card=True)
+    recorder.wait_state(batch.id, "ready")
+    assert pipeline.set_paced(False) == NEW_PHOTOS
+    assert recorder.wait_state(batch.id, "done").uploaded == NEW_PHOTOS
+
+
 def test_fr35_retry_failed_requeues_at_failed_stage(
     store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
 ) -> None:

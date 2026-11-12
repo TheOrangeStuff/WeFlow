@@ -168,9 +168,9 @@ def test_fr34_held_panel_release(
         shutil.copy(shot, folder / shot.name)
     window.import_folder(str(folder))  # FR-18
     qtbot.waitUntil(lambda: window.panel.state == "held", timeout=10000)
-    assert window.panel.headline.text() == "Ready for review"
-    assert window.panel.subline.text() == "4 photos held"
-    assert window.panel.visible_buttons() == ["Release", "Open folder"]
+    assert window.panel.headline.text() == "Ready to upload"
+    assert window.panel.subline.text() == "4 photos tuned. Upload them to Flickr?"
+    assert window.panel.visible_buttons() == ["Upload", "Open folder"]
     assert fake_uploader.upload_calls == 0
     qtbot.mouseClick(window.panel.release, Qt.MouseButton.LeftButton)
     qtbot.waitUntil(lambda: window.panel.state == "done", timeout=10000)
@@ -224,10 +224,11 @@ def test_pause_stops_card_watching(qtbot, window, bridge, tmp_path) -> None:  # 
     qtbot.waitUntil(lambda: window.notice_bar.isVisible(), timeout=3000)  # card already in
 
 
-def test_ui05_at_most_three_always_visible_controls(qtbot, window) -> None:  # type: ignore[no-untyped-def]
+def test_ui05_at_most_four_always_visible_controls(qtbot, window) -> None:  # type: ignore[no-untyped-def]
     visible = [b for b in window.findChildren(Button) if b.isVisible()]
     names = sorted(b.accessibleName() or b.text() for b in visible)
     assert names == ["Pause", "Settings", "Switch event"]
+    assert window.mode.isVisible()  # the fourth: Auto/Paced (DECISIONS 52)
     assert not window.earlier_label.isVisible() and not window.activity.isVisible()
     assert (window.width(), window.height()) == (560, 720)
     assert (window.minimumWidth(), window.minimumHeight()) == (480, 600)

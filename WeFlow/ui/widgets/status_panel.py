@@ -26,6 +26,7 @@ LOOKS = {
     "copying": ("warn", "hourglass", "warn-strong"),
     "safe": ("good-edge", "circle-check", "good-strong"),
     "working": ("neutral", "refresh-cw", "text-2"),
+    "ready": ("good-edge", "circle-check", "good-strong"),
     "held": ("warn", "clock", "warn-strong"),
     "done": ("good", "circle-check", "good-strong"),
     "attention": ("bad-edge", "triangle-alert", "bad-strong"),
@@ -46,6 +47,7 @@ class PanelView:
     batch_id: int | None = None
     event_id: str = ""
     source: str = ""
+    card: bool = False  # the card is still in, so Eject applies
 
 
 def _fraction(done: int, total: int) -> float:
@@ -84,6 +86,14 @@ def view_for(
         step, progress = 2, _fraction(batch.uploaded, count)
     elif batch.state == "held":
         step = 2
+    elif batch.state == "ready":
+        step = 1
+
+    if batch.state == "ready":  # paced mode: copied and verified, waiting for the go-ahead
+        card = batch.is_card and card_present
+        headline = "Safe to remove" if card else "Copied and verified"
+        sub = f"{plural(batch.ready)} copied. Process and auto-tune them?"
+        return PanelView("ready", headline, sub, step, None, **common, card=card)
     elif batch.state == "attention":
         step = 1 if batch.processed < count else 2
 
@@ -101,7 +111,9 @@ def view_for(
             sub = f"{sub} · {batch.error}"
         return PanelView("working", "Uploading", sub, step, progress, **common)
     if batch.state == "held":
-        return PanelView("held", "Ready for review", f"{plural(batch.held)} held", **common)
+        service = service_name(batch.destination)
+        sub = f"{plural(batch.held)} tuned. Upload them to {service}?"
+        return PanelView("held", "Ready to upload", sub, step, None, **common)
     if batch.state == "attention":
         reason = batch.error or "Some photos failed. Press Retry."
         return PanelView("attention", "Needs attention", reason, **common)
@@ -119,6 +131,7 @@ class StatusPanel(QFrame):
 
     eject_clicked = Signal()
     release_clicked = Signal()
+    process_clicked = Signal()
     retry_clicked = Signal()
     details_clicked = Signal()
     open_folder_clicked = Signal()
@@ -141,19 +154,22 @@ class StatusPanel(QFrame):
 
         self.eject = Button("Eject", "good", icon="eject", icon_token="good-strong")
         self.open_folder = Button("Open folder", "outline")
-        self.release = Button("Release", "primary")
+        self.release = Button("Upload", "primary", icon="cloud-upload", icon_token="on-accent")
+        self.process = Button("Process", "primary")
         self.retry = Button("Retry", "primary")
         self.details = Button("Details", "outline")
         self.resume = Button("Resume", "outline", icon="play")
         self.eject.clicked.connect(self.eject_clicked)
         self.open_folder.clicked.connect(self.open_folder_clicked)
         self.release.clicked.connect(self.release_clicked)
+        self.process.clicked.connect(self.process_clicked)
         self.retry.clicked.connect(self.retry_clicked)
         self.details.clicked.connect(self.details_clicked)
         self.resume.clicked.connect(self.resume_clicked)
         self._buttons = {
             "paused": (self.resume,),
             "safe": (self.eject,),
+            "ready": (self.process, self.eject),
             "held": (self.release, self.open_folder),
             "attention": (self.retry, self.details),
             "copy_error": (self.retry,),
@@ -171,6 +187,7 @@ class StatusPanel(QFrame):
         button_row.setContentsMargins(0, 24, 0, 0)
         button_row.setSpacing(8)
         self._all_buttons = (
+            self.process,
             self.eject,
             self.release,
             self.retry,
@@ -201,7 +218,7 @@ class StatusPanel(QFrame):
         return self.view.state
 
     def visible_buttons(self) -> list[str]:
-        return [b.text() for b in self._buttons.get(self.view.state, ()) if not b.isHidden()]
+        return [b.text() for b in self._all_buttons if not b.isHidden()]
 
     def show_view(self, view: PanelView) -> None:
         if view == self.view:
@@ -228,6 +245,8 @@ class StatusPanel(QFrame):
             self.progress.set_value(view.progress)
         self._track_box.setVisible(view.step >= 0 or view.progress is not None)
         shown = self._buttons.get(view.state, ())
+        if view.state == "ready" and not view.card:
+            shown = (self.process,)
         for button in self._all_buttons:
             button.setVisible(button in shown)
         self._button_box.setVisible(bool(shown))

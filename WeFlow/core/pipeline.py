@@ -124,6 +124,7 @@ class Pipeline:
         self._dirty: set[int] = set()
         self._waiting: dict[int, str] = {}
         self._last_id = 0
+        self._paced = False
         self._stopping = threading.Event()
         self._budget = PixelBudget()
         self._copy_q: queue.Queue[int | None] = queue.Queue()
@@ -165,6 +166,39 @@ class Pipeline:
         self._copy_q.put(batch.id)
         return replace(batch)
 
+    @property
+    def paced(self) -> bool:
+        return self._paced
+
+    def set_paced(self, paced: bool) -> int:
+        """Paced mode waits for a go-ahead after copying and again before uploading.
+
+        Switching back to auto sends waiting photos on, except those an event holds for
+        review (``hold_uploads``). Returns how many photos moved on.
+        """
+        self._paced = paced
+        if paced:
+            return 0
+        moved = self.process_ready()
+        for eid, _state in self._event_states(None):
+            event = self._store.get(eid)
+            if event is not None and not event.hold_uploads:
+                moved += self.release_held(eid)
+        return moved
+
+    def process_ready(self, event_id: str | None = None) -> int:
+        """Paced mode: start processing every copied photo waiting for the go-ahead."""
+        started = 0
+        for eid, state in self._event_states(event_id):
+            for photo in list(state.photos.values()):
+                if photo.status == "copied" and photo.held:
+                    photo.held = False
+                    state.put_photo(photo)
+                    self._enqueue("process", eid, photo.name)
+                    self._touch(photo.batch_id)
+                    started += 1
+        return started
+
     def release_held(self, event_id: str | None = None) -> int:
         """FR-34: send every held photo (of one event, or all) on to upload."""
         released = 0
@@ -191,6 +225,7 @@ class Pipeline:
                     if not (state.processed / photo.processed_name).is_file():
                         stage = "process"
                 photo.attempts, photo.error, photo.failed_stage = 0, "", ""
+                photo.held = False
                 photo.status = "copied" if stage == "process" else "processed"
                 state.put_photo(photo)
                 self._enqueue("process" if stage == "process" else "upload", eid, photo.name)
@@ -219,7 +254,7 @@ class Pipeline:
                         state.put_batch(batch)
             for photo in list(state.photos.values()):
                 owner = state.batches.get(photo.batch_id)
-                if photo.status == "copied":
+                if photo.status == "copied" and not photo.held:
                     self._enqueue("process", event.id, photo.name)
                 elif photo.status == "processed" and not photo.held:
                     if owner is not None and owner.destination != "none":
@@ -344,15 +379,15 @@ class Pipeline:
     def _recount(self, batch: Batch, state: EventState, notices: list[Notice]) -> None:
         photos = state.batch_photos(batch.id)
         uploads = batch.destination != "none"
-        to_process = sum(p.status == "copied" for p in photos)
+        to_process = sum(p.status == "copied" and not p.held for p in photos)
+        batch.ready = sum(p.status == "copied" and p.held for p in photos)
         to_upload = sum(p.status == "processed" and not p.held for p in photos) if uploads else 0
         failed = [p for p in photos if p.status == "failed"]
         batch.uploaded = sum(p.status == "uploaded" for p in photos)
         batch.held = sum(p.status == "processed" and p.held for p in photos)
         batch.failed = len(failed)
-        batch.processed = (
-            len(photos) - to_process - sum(p.failed_stage == "process" for p in failed)
-        )
+        failed_processing = sum(p.failed_stage == "process" for p in failed)
+        batch.processed = len(photos) - to_process - batch.ready - failed_processing
         if batch.state == "error":
             return
         if to_process:
@@ -361,6 +396,8 @@ class Pipeline:
             new = "uploading"
         elif failed:
             new = "attention"
+        elif batch.ready:
+            new = "ready"
         elif batch.held:
             new = "held"
         else:
@@ -377,13 +414,17 @@ class Pipeline:
         batch.state, batch.error = new, waiting
         if not changed:
             return
-        batch.finished = time.time() if new in ("done", "attention", "held") else 0.0
+        batch.finished = time.time() if new in ("done", "attention", "held", "ready") else 0.0
         state.put_batch(batch)
         if new == "attention":
             notices.append(Notice("error", f"{batch.label}: {batch.error}", batch.id))
         elif new == "held":
             notices.append(
-                Notice("info", f"{batch.label}: {batch.held} photos ready for review.", batch.id)
+                Notice("info", f"{batch.label}: {plural(batch.held)} ready to upload.", batch.id)
+            )
+        elif new == "ready" and not batch.is_card:  # a card already said "safe to remove"
+            notices.append(
+                Notice("info", f"{batch.label}: {plural(batch.ready)} ready to process.", batch.id)
             )
         elif new == "done":
             notices.append(Notice("info", f"{batch.label}: {done_summary(batch)}", batch.id))
@@ -429,6 +470,7 @@ class Pipeline:
                             batch.id,
                             original=copied.original,
                             seq=state.next_seq(),
+                            held=self._paced,  # paced: wait for the go-ahead to process
                         )
                     )
                     names.append(copied.name)
@@ -453,7 +495,9 @@ class Pipeline:
             if batch.is_card:
                 self._emit(Notice("safe", f"{batch.label}: {safe_summary(batch)}", batch.id))
         for name in names:
-            self._enqueue("process", batch.event_id, name)
+            photo = state.photos.get(name)
+            if photo is not None and not photo.held:
+                self._enqueue("process", batch.event_id, name)
         self._touch(batch.id, now=True)
 
     # ------------------------------------------------------------ processing
@@ -495,7 +539,7 @@ class Pipeline:
         else:
             photo.status, photo.error = "processed", ""
             upload = batch.destination != "none"
-            photo.held = upload and event.hold_uploads
+            photo.held = upload and (event.hold_uploads or self._paced)
             state.put_photo(photo)
             if upload and not photo.held:
                 self._enqueue("upload", task[0], photo.name)
