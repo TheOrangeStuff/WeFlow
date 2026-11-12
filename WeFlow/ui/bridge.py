@@ -128,7 +128,7 @@ class Bridge(QObject):
     # ------------------------------------------------------------- lifecycle
     def start(self) -> None:
         """Resume unfinished work and begin watching for cards."""
-        self._io.submit(self._guard, self.pipeline.resume)
+        self._queue(self.pipeline.resume)
         self.refresh_services()
         self.watcher.start()
 
@@ -146,6 +146,12 @@ class Bridge(QObject):
         if self._closed:
             job()
         else:
+            self._io.submit(self._guard, job)
+
+    def _queue(self, job: Callable[[], Any]) -> None:
+        """Run ``job`` on the I/O thread. After shutdown, late requests (a card's
+        countdown, a button press while quitting) are dropped."""
+        if not self._closed:
             self._io.submit(self._guard, job)
 
     @staticmethod
@@ -171,7 +177,8 @@ class Bridge(QObject):
             if done is not None and not self._closed:
                 self._deliver.emit(done, result)
 
-        self._jobs.submit(work)
+        if not self._closed:
+            self._jobs.submit(work)
 
     @staticmethod
     def _on_deliver(done: Callable[[Any], None], result: Any) -> None:
@@ -253,24 +260,22 @@ class Bridge(QObject):
         event = self.store.get(event_id) if event_id else self.active()
         if event is None:
             return False
-        self._io.submit(
-            self._guard, lambda: self.pipeline.submit(Path(source), event, label, is_card)
-        )
+        self._queue(lambda: self.pipeline.submit(Path(source), event, label, is_card))
         return True
 
     def release(self, event_id: str | None) -> None:
-        self._io.submit(self._guard, lambda: self.pipeline.release_held(event_id))
+        self._queue(lambda: self.pipeline.release_held(event_id))
 
     def process(self, event_id: str | None) -> None:
         """Paced mode: go ahead and process the photos waiting after copying."""
-        self._io.submit(self._guard, lambda: self.pipeline.process_ready(event_id))
+        self._queue(lambda: self.pipeline.process_ready(event_id))
 
     def set_paced(self, paced: bool) -> None:
         self.update_settings(paced=paced)
-        self._io.submit(self._guard, lambda: self.pipeline.set_paced(paced))
+        self._queue(lambda: self.pipeline.set_paced(paced))
 
     def retry(self, event_id: str | None) -> None:
-        self._io.submit(self._guard, lambda: self.pipeline.retry_failed(event_id))
+        self._queue(lambda: self.pipeline.retry_failed(event_id))
 
     def snapshot(self) -> list[Batch]:
         return self.pipeline.snapshot()

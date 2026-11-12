@@ -311,3 +311,11 @@ def test_nfr04_bridge_keeps_store_writes_off_the_ui_thread(qtbot, bridge, store,
     bridge.save_event(event)
     qtbot.waitUntil(lambda: len(writers) >= 2, timeout=3000)
     assert all(name.startswith("weflow-io") for name in writers)
+
+
+def test_bridge_ignores_work_after_shutdown(bridge, event) -> None:  # type: ignore[no-untyped-def]
+    """A card countdown that fires while the app quits must not crash it."""
+    bridge.shutdown()
+    assert bridge.submit("/nowhere", "CARD", True) is True
+    bridge.retry(None)
+    bridge.run(lambda: None)
