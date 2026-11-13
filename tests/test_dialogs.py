@@ -598,3 +598,32 @@ def test_fr39_gallery_list_is_kept_until_reload(
     qtbot.mouseClick(again.album_picker.reload, Qt.MouseButton.LeftButton)
     qtbot.waitUntil(lambda: again.gallery.count() == 2, timeout=3000)
     assert again.gallery.itemText(0) == "Smith Wedding"
+
+
+def test_ui_busy_cover_while_connect_runs(qtbot, window, bridge, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import threading
+
+    from WeFlow.ui import bridge as bridge_module
+    from WeFlow.ui.widgets import busy
+
+    release = threading.Event()
+
+    def slow_begin() -> PendingAuth:
+        release.wait(5)
+        raise UploadError("Can't reach SmugMug. Check the connection and try again.")
+
+    monkeypatch.setitem(bridge_module._BEGIN, "smugmug", slow_begin)
+    dialog = SettingsDialog(bridge, window)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    row = dialog.services["smugmug"]
+    row.api_key.setText("my-key")
+    row.api_secret.setText("my-secret")
+    qtbot.mouseClick(row.connect_button, Qt.MouseButton.LeftButton)
+    cover = busy.overlay(row)
+    qtbot.waitUntil(cover.isVisible, timeout=3000)
+    assert cover.text.text() == "Flowing…" and cover.geometry() == dialog.rect()
+    shoot(dialog, "ui-busy-cover-light")
+    release.set()
+    qtbot.waitUntil(lambda: not cover.isVisible(), timeout=3000)
+    assert row.error.text().startswith("Can't reach SmugMug")

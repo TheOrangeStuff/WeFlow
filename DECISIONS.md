@@ -298,3 +298,14 @@ older unsigned build, or the user pressed Deny), secrets go to a spare entry,
 `credentials-2`, that this build creates itself. The spare entry is read first when it
 exists. Old per-item entries are read best effort, one refusal no longer fails the rest.
 Keychain errors are logged (entry name and OS error only) so "Copy log" shows the cause.
+
+## 1.6.6 — "Flowing…" cover for slow buttons
+
+SPEC §7 has no busy state for a whole window. Buttons whose job can take seconds
+(Connect, Finish, Disconnect, Check for updates, gallery Reload and Create) now cover
+their window with the background colour at 82% and a centred "Flowing…" with a thin
+bar moving along it. SPEC §7 avoids spinners where a progress bar can be shown, and
+these jobs have no progress to show, so the bar moves without a fixed end. The cover
+waits 300 ms before appearing, so quick answers never flicker, and it blocks clicks and
+keys until the job ends. The gallery list loaded when the editor opens stays inline
+("Loading your galleries…"), so the other fields can be filled in meanwhile.

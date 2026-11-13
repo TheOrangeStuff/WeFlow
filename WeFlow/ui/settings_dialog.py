@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from WeFlow import __version__
 
 from .bridge import SERVICES, Bridge, PendingAuth, service_name
+from .widgets import busy as busy_cover
 from .widgets.chip import Chip
 from .widgets.common import Button, Toggle, label, separator
 
@@ -37,7 +38,7 @@ class ServiceRow(QFrame):
         self.connect_button = Button("Connect")
         self.connect_button.clicked.connect(self._begin)
         self.disconnect = Button("Disconnect", "link")
-        self.disconnect.clicked.connect(lambda: bridge.disconnect_service(service))
+        self.disconnect.clicked.connect(self._disconnect)
         self.own_key = Button("Change API key…", "link")
         self.own_key.clicked.connect(self._show_keys)
         self.get_key = Button(f"Get a {self.title} API key…", "link")
@@ -132,6 +133,11 @@ class ServiceRow(QFrame):
     def _busy(self, busy: bool) -> None:
         self.connect_button.setEnabled(not busy)
         self.finish.setEnabled(not busy)
+        (busy_cover.begin if busy else busy_cover.end)(self)
+
+    def _disconnect(self) -> None:
+        busy_cover.begin(self)  # the keychain may take a moment, or ask first
+        self.bridge.disconnect_service(self.service, lambda _result: busy_cover.end(self))
 
     def _begin(self) -> None:
         self.error.hide()
@@ -323,9 +329,11 @@ class SettingsDialog(QDialog):
     def _check_now(self) -> None:
         self.check_now.setEnabled(False)
         self.check_now.setText("Checking…")
+        busy_cover.begin(self)
         self.bridge.check_for_updates_now(self._on_checked)
 
     def _on_checked(self, outcome: str) -> None:
+        busy_cover.end(self)
         self.check_now.setEnabled(True)
         if outcome == "update":
             self.check_now.setText("Check for updates")

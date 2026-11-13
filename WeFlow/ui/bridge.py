@@ -522,9 +522,15 @@ class Bridge(QObject):
     def open_api_key_page(self, service: str) -> None:
         self.open_url(uploaders.API_KEY_PAGES[service])
 
-    def disconnect_service(self, service: str) -> None:
+    def disconnect_service(self, service: str, done: Callable[[Any], None] | None = None) -> None:
         self._albums.pop(service, None)
-        self.run(lambda: uploaders.disconnect(service), lambda _result: self.refresh_services())
+
+        def finished(result: Any) -> None:
+            self.refresh_services()
+            if done is not None:
+                done(result)
+
+        self.run(lambda: uploaders.disconnect(service), finished)
 
     @staticmethod
     def open_url(url: str) -> None:

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.6 — 2026-11-13
+
+- When a button takes a few seconds, such as **Connect**, the window greys out and shows
+  "Flowing…" until it is done.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.6.5 — 2026-11-13
 
 - Fixed: the gallery list could stay on "Loading" for minutes on accounts with many

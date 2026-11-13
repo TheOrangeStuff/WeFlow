@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..bridge import AlbumChoice, Bridge, UploadError, service_name
+from . import busy as busy_cover
 from .common import Button, label
 
 PLACEHOLDERS = {
@@ -206,9 +207,15 @@ class AlbumPicker(QWidget):
             return
         self._show_hint(f"Loading your {album_word(destination)}…")
         self.reload.setEnabled(False)
-        self.bridge.list_albums(
-            destination, lambda result: self._on_list(token, result), refresh=refresh
-        )
+        if refresh:
+            busy_cover.begin(self)  # Reload was pressed; opening the editor loads quietly
+
+        def answered(result: object) -> None:
+            if refresh:
+                busy_cover.end(self)
+            self._on_list(token, result)
+
+        self.bridge.list_albums(destination, answered, refresh=refresh)
 
     def _on_list(self, token: int, result: object) -> None:
         if token != self._token:
@@ -287,11 +294,13 @@ class AlbumPicker(QWidget):
         self.create_button.setEnabled(False)
         self.new_name.setEnabled(False)
         self._show_hint(f"Making the {album_word(destination, plural=False)}…")
+        busy_cover.begin(self)
         self.bridge.create_album(
             destination, name, lambda result: self._on_created(token, destination, result)
         )
 
     def _on_created(self, token: int, destination: str, result: object) -> None:
+        busy_cover.end(self)
         self.new_name.setEnabled(True)
         self._sync_create()
         if token != self._new_token or destination != self._destination:
