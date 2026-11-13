@@ -189,7 +189,12 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
   - SmugMug: `GET /api/v2!authuser` → `Uris.UserAlbums.Uri`, paged by `start`/`count`, newest first. Picking a gallery stores its AlbumUri in `album` and its name in `album_name`.
   - Flickr: `photosets.getList`, newest first by `date_create`; picking stores the title in `album`, as typing does.
   - The list loads off the UI thread. If it can't load (not signed in, offline), say why under the field and keep what is saved.
-  - Creating a SmugMug gallery from WeFlow is out of scope for now.
+  - Creating a SmugMug gallery from WeFlow is out of scope for now. *(Superseded by FR-41 in 1.6.0.)*
+- **FR-41** *(1.6.0)* Make a new gallery or album from WeFlow, and pick from the list in the first-run wizard too.
+  - A **+** button next to Reload opens a name box (suggesting the event name) with Create and Cancel.
+  - SmugMug: `GET /api/v2!authuser` → `Uris.Node.Uri`, then `POST <node>!children` with `Type: Album`, the name, a `UrlName` built from it and `Privacy: Unlisted`. A 409 (address taken) retries with `-2` … `-5`. The new gallery is picked and shown at the top of the list.
+  - Flickr can't hold an empty album, so the title is picked and Flickr makes the album with the first upload, as a typed title always did. No API call.
+  - The first-run "Create your first event" step uses the same picker as the event editor.
 - **FR-40** *(1.5.0)* Originals are the lasting copy. For events that upload, processed copies are written to the hidden `.WeFlow/work/` folder.
   - Once a photo is uploaded **and** added to its album, its processed copy is deleted, or moved into `processed/` when the event's "Keep processed copies after upload" is on (off by default).
   - Held, waiting and failed photos keep their processed copy until they are up. If it goes missing before upload, it is made again from the original.
@@ -268,7 +273,7 @@ The panel shows the most recent batch. The **4-step tracker** (Copy · Process �
 
 - **Event editor** — a sheet (macOS) or dialog (Windows), 640 px wide.
   - Left column holds 4 groups, each with a heading:
-    - **Destination:** where, album (a dropdown of the user's galleries, FR-39), privacy, keywords, hold toggle.
+    - **Destination:** where, album (a dropdown of the user's galleries, FR-39, with + to make a new one, FR-41), privacy, keywords, hold toggle.
     - **Look:** auto WB with strength slider, auto tone.
     - **Watermark:** toggle, file picker with thumbnail, position as a 3×3 grid picker (corners + center only enabled), size slider, opacity slider.
     - **Export** *(1.2.0)*: preset picker (Save as preset… / Delete preset), file naming, custom text and start number (only when the rule uses them), an example file name, quality slider, Limit file size toggle and size.

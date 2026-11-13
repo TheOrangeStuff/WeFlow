@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.0 — 2026-11-13
+
+- Make a new gallery without leaving WeFlow. Press **+** next to the gallery box, type
+  a name and press **Create**. The new gallery is picked for the event right away.
+- New SmugMug galleries are Unlisted: people with the link can see them. Flickr makes a
+  new album when its first photo goes up.
+- When you set up WeFlow for the first time, you can now pick your gallery from a list
+  as soon as you have signed in.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.5.0 — 2026-11-13
 
 - Your originals are now the copy you keep. Once a photo is uploaded and in its album,

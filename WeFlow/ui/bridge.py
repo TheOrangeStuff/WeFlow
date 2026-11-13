@@ -446,6 +446,18 @@ class Bridge(QObject):
 
         self.run(job, done)
 
+    def create_album(self, destination: str, name: str, done: Callable[[Any], None]) -> None:
+        """FR-41: make a new gallery or album. ``done`` gets the ``AlbumChoice``
+        or an ``UploadError``."""
+
+        def job() -> AlbumChoice:
+            try:
+                return self._uploader_factory(destination).create_album(name)
+            except secrets.SecretsError as exc:
+                raise UploadError(f"{exc} Unlock it and try again.", True) from exc
+
+        self.run(job, done)
+
     @staticmethod
     def match_album(choices: list[AlbumChoice], album: str) -> AlbumChoice | None:
         return uploaders.match_album(choices, album)

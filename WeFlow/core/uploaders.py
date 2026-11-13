@@ -65,6 +65,10 @@ class Uploader(Protocol):
         """The signed-in user's galleries or albums, newest first (FR-39)."""
         ...
 
+    def create_album(self, name: str) -> AlbumChoice:
+        """Make a new gallery or album called ``name`` and return it (FR-41)."""
+        ...
+
 
 def service_name(destination: str) -> str:
     return SERVICE_NAMES.get(destination, destination)
@@ -202,6 +206,19 @@ def smugmug_album_ref(album: str) -> tuple[str, str]:
     return "uri", f"/api/v2/album/{key}"
 
 
+def smugmug_url_name(name: str) -> str:
+    """A gallery's web address part: letters and digits joined by ``-``, starting
+    with a capital letter, as SmugMug requires."""
+    slug = "-".join(re.findall(r"[A-Za-z0-9]+", name))[:60].strip("-")
+    if not slug[:1].isalpha():
+        slug = f"Gallery-{slug}".strip("-")
+    return slug[0].upper() + slug[1:]
+
+
+SMUGMUG_NEW_PRIVACY = "Unlisted"  # a new gallery is reachable by link, not listed
+SMUGMUG_URL_TRIES = 5  # Name-2 … Name-5 when the address is taken
+
+
 def match_album(choices: list[AlbumChoice], album: str) -> AlbumChoice | None:
     """The listed gallery an album field points at: same value, AlbumUri or node id."""
     text = album.strip()
@@ -318,7 +335,12 @@ class SmugMugUploader:
     def add_to_album(self, remote_id: str, event: Profile) -> None:
         """SmugMug uploads go straight into the gallery; nothing more to do."""
 
-    def _get_json(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _get_json(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        failed: str = "SmugMug did not send the gallery list. Try again.",
+    ) -> dict[str, Any]:
         import requests
 
         try:
@@ -333,11 +355,11 @@ class SmugMugUploader:
         if response.status_code in (401, 403):
             raise _expired("SmugMug")
         if response.status_code != 200:
-            raise UploadError("SmugMug did not send the gallery list. Try again.")
+            raise UploadError(failed)
         try:
             body = response.json()["Response"]
         except (KeyError, TypeError, ValueError) as exc:
-            raise UploadError("SmugMug did not send the gallery list. Try again.") from exc
+            raise UploadError(failed) from exc
         return dict(body)
 
     def list_albums(self) -> list[AlbumChoice]:
@@ -363,6 +385,61 @@ class SmugMugUploader:
             start += int(pages.get("Count") or SMUGMUG_PAGE)
         found.sort(key=lambda item: item[0], reverse=True)
         return [choice for _, choice in found[:MAX_ALBUMS]]
+
+    def create_album(self, name: str) -> AlbumChoice:
+        """A new unlisted gallery at the top of the user's site (FR-41)."""
+        import requests
+
+        name = name.strip()
+        if not name:
+            raise UploadError("Enter a name for the new gallery.", True)
+        failed = "SmugMug did not make the gallery. Try again."
+        try:
+            user = self._get_json("/api/v2!authuser", failed=failed)["User"]
+            root = str(user["Uris"]["Node"]["Uri"])
+        except (KeyError, TypeError) as exc:
+            raise UploadError(failed) from exc
+        url_name = smugmug_url_name(name)
+        for attempt in range(1, SMUGMUG_URL_TRIES + 1):
+            body = {
+                "Type": "Album",
+                "Name": name,
+                "UrlName": url_name if attempt == 1 else f"{url_name}-{attempt}",
+                "Privacy": SMUGMUG_NEW_PRIVACY,
+            }
+            try:
+                response = self._session().post(
+                    f"{SMUGMUG_API}{root}!children",
+                    json=body,
+                    headers={"Accept": "application/json"},
+                    timeout=TIMEOUT[0],
+                )
+            except requests.RequestException as exc:
+                raise UploadError(
+                    "Can't reach SmugMug. Check the connection and try again."
+                ) from exc
+            if response.status_code == 409:  # that web address is taken; try the next
+                continue
+            if response.status_code == 401:
+                raise _expired("SmugMug")
+            if response.status_code == 403:
+                raise UploadError(
+                    "SmugMug did not allow a new gallery. Reconnect it in Settings and try again.",
+                    True,
+                )
+            if response.status_code not in (200, 201):
+                raise UploadError(failed)
+            try:
+                node = response.json()["Response"]["Node"]
+                uri = str(node["Uris"]["Album"]["Uri"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise UploadError(failed) from exc
+            folder = str(node.get("UrlPath") or "").rsplit("/", 1)[0].strip("/")
+            node_id = str(node.get("NodeID") or "")
+            return AlbumChoice(uri, str(node.get("Name") or name), node_id, folder)
+        raise UploadError(
+            "That name is taken on SmugMug. Choose another name, or pick it from the list.", True
+        )
 
 
 # -------------------------------------------------------------------- Flickr
@@ -518,6 +595,14 @@ class FlickrUploader:
         found.sort(key=lambda item: item[0], reverse=True)  # stable: undated keep their order
         return [choice for _, choice in found[:MAX_ALBUMS]]
 
+    def create_album(self, name: str) -> AlbumChoice:
+        """Flickr can't hold an empty album, so the title is kept and the album is
+        made with the event's first upload, as a typed title always was (FR-41)."""
+        title = name.strip()
+        if not title:
+            raise UploadError("Enter a name for the new album.", True)
+        return AlbumChoice(title, title)
+
     @staticmethod
     def _find_album(client: Any, title: str) -> str:
         page = 1
@@ -548,6 +633,7 @@ class FakeUploader:
         list_error: UploadError | None = None,
     ) -> None:
         self.albums = list(albums or [])
+        self.created: list[str] = []
         self.list_error = list_error
         self.fail_times = fail_times
         self.album_fail_times = album_fail_times
@@ -579,6 +665,14 @@ class FakeUploader:
         if self.list_error is not None:
             raise self.list_error
         return list(self.albums)
+
+    def create_album(self, name: str) -> AlbumChoice:
+        if self.list_error is not None:
+            raise self.list_error
+        choice = AlbumChoice(f"/api/v2/album/new{len(self.created) + 1}", name.strip())
+        self.created.append(choice.name)
+        self.albums.insert(0, choice)  # newest first
+        return choice
 
 
 def make_uploader(destination: str) -> Uploader:

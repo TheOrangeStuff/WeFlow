@@ -238,9 +238,27 @@ owner and accepted on 2026-11-11.
 67. **"Open folder" opens `originals/`** for upload events that don't keep processed
     copies, since `processed/` will be empty.
 
+## 1.6.0 — make a gallery from WeFlow (FR-41)
+
+68. **Creating galleries is back in scope** at the owner's request. This replaces #61.
+    **(owner's choice)**
+69. **The first-run wizard now shows the gallery list**, which replaces #60. Step 2 signs
+    in just before, so the plain box there was where people looked for the list and
+    couldn't find it. If the user skipped sign-in, the box works as typed, as before.
+70. **New SmugMug galleries go at the top of the site, Unlisted.** Unlisted means people
+    with the link can see the gallery, but it isn't listed on the site. Change it on SmugMug if
+    needed. WeFlow has no folder or privacy picker, so the face stays small.
+71. **No change to the SmugMug sign-in scope** (still `Access=Full, Permissions=Add`).
+    Adding a gallery counts as adding content. If SmugMug refuses with 403, the message
+    asks the user to reconnect. Nobody is signed out by the update.
+72. **Flickr "new album" is only a title.** Flickr albums need a photo, so the album is
+    made on the first upload, exactly as a typed title was. WeFlow says so under the box.
+73. **The gallery box is one widget (`ui/widgets/album_picker.py`)** shared by the event
+    editor and the wizard, so the two can't drift apart.
+
 ## Not verified yet
 
 These need hardware, accounts or other operating systems (see `docs/manual-test.md`):
 real cards on macOS and Windows; eject; real SmugMug and Flickr uploads and connect
-flows; tray icon and notifications; installers, signing and notarisation; start at
+flows, including creating a SmugMug gallery (FR-41); tray icon and notifications; installers, signing and notarisation; start at
 login; NFR-03 and NFR-08 with real 24 MP and 45 MP files.

@@ -373,6 +373,46 @@ def test_settings_library_sound_and_login(
 
 
 # --------------------------------------------------------------------- first run
+def test_fr41_new_gallery_from_the_editor(
+    qtbot, window, bridge, store, event, fake_uploader
+) -> None:  # type: ignore[no-untyped-def]
+    fake_uploader.albums = [uploaders.AlbumChoice("/api/v2/album/A1", "Old Gala", "NA1")]
+    event.destination, event.album = "smugmug", "/api/v2/album/A1"
+    bridge.save_event(event)
+    editor = EventEditor(bridge, bridge.active(), window)
+    qtbot.addWidget(editor)
+    editor.show()
+    picker = editor.album_picker
+    qtbot.waitUntil(lambda: editor.gallery.count() == 1, timeout=3000)
+    assert picker.new.toolTip() == "New gallery" and not picker.new_row.isVisible()
+    qtbot.mouseClick(picker.new, Qt.MouseButton.LeftButton)
+    assert picker.new_row.isVisible() and picker.new_name.text() == event.name  # suggested
+    picker.new_name.setText("Smith Wedding")
+    shoot(editor, "fr41-new-gallery-open-light")
+    qtbot.mouseClick(picker.create_button, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: editor.gallery.count() == 2, timeout=3000)
+    assert fake_uploader.created == ["Smith Wedding"] and not picker.new_row.isVisible()
+    shoot(editor, "fr41-new-gallery-light")
+    assert editor.gallery.itemText(0) == "Smith Wedding"  # newest first
+    assert editor.album.text() == "Smith Wedding"
+    qtbot.mouseClick(editor.save, Qt.MouseButton.LeftButton)
+    saved = store.get(event.id)
+    assert (saved.album, saved.album_name) == ("/api/v2/album/new1", "Smith Wedding")
+
+
+def test_fr41_first_run_lists_galleries_after_sign_in(qtbot, bridge, fake_uploader) -> None:  # type: ignore[no-untyped-def]
+    fake_uploader.albums = [uploaders.AlbumChoice("/api/v2/album/B2", "Smith Wedding", "NB2")]
+    wizard = FirstRun(bridge)
+    qtbot.addWidget(wizard)
+    wizard.show()
+    wizard.destination.setCurrentIndex(1)  # SmugMug
+    wizard.go(2)
+    qtbot.waitUntil(lambda: wizard.album_picker.gallery.count() == 1, timeout=3000)
+    wizard.album_picker.gallery.setCurrentIndex(0)
+    event = wizard.current_event()
+    assert (event.album, event.album_name) == ("/api/v2/album/B2", "Smith Wedding")
+
+
 def test_first_run_three_steps_then_event_exists(qtbot, qapp, tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     from WeFlow.ui import theme as theme_module
     from WeFlow.ui.bridge import Bridge

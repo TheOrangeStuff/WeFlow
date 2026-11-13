@@ -293,3 +293,74 @@ def test_fr39_match_album_forms(album: str) -> None:
     other = uploaders.AlbumChoice("/api/v2/album/A1", "Old Gala", "NA1")
     assert uploaders.match_album([other, wedding], album) == wedding
     assert uploaders.match_album([other], album) is None
+
+
+class CreatingSession:
+    """Answers authuser and the new-gallery POST; the first ``taken`` POSTs get 409."""
+
+    def __init__(self, taken: int = 0, status: int = 201) -> None:
+        self.taken, self.status = taken, status
+        self.posts: list[tuple[str, dict[str, Any]]] = []
+
+    def get(
+        self, url: str, params: dict[str, Any] | None, headers: dict[str, str], timeout: Any
+    ) -> FakeResponse:
+        uris = {"Node": {"Uri": "/api/v2/node/ROOT"}}
+        return FakeResponse(200, {"Response": {"User": {"Uris": uris}}})
+
+    def post(
+        self, url: str, json: dict[str, Any], headers: dict[str, str], timeout: Any
+    ) -> FakeResponse:
+        self.posts.append((url, json))
+        if len(self.posts) <= self.taken:
+            return FakeResponse(409)
+        node = {
+            "Name": json["Name"],
+            "NodeID": "NEW1",
+            "UrlPath": f"/{json['UrlName']}",
+            "Uris": {"Album": {"Uri": "/api/v2/album/NEW1"}},
+        }
+        return FakeResponse(self.status, {"Response": {"Node": node}})
+
+
+@pytest.mark.parametrize(
+    ("name", "url_name"),
+    [
+        ("smith wedding 2026", "Smith-wedding-2026"),
+        ("2026 Gala!", "Gallery-2026-Gala"),
+        ("é", "Gallery"),
+    ],
+)
+def test_fr41_smugmug_url_name(name: str, url_name: str) -> None:
+    assert uploaders.smugmug_url_name(name) == url_name
+
+
+def test_fr41_smugmug_creates_unlisted_gallery(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = CreatingSession(taken=1)  # the first address is in use
+    uploader = SmugMugUploader()
+    monkeypatch.setattr(uploader, "_session", lambda: session)
+    choice = uploader.create_album("  Smith Wedding ")
+    assert choice == uploaders.AlbumChoice("/api/v2/album/NEW1", "Smith Wedding", "NEW1", "")
+    assert [url for url, _ in session.posts] == [
+        "https://api.smugmug.com/api/v2/node/ROOT!children"
+    ] * 2
+    assert [body["UrlName"] for _, body in session.posts] == ["Smith-Wedding", "Smith-Wedding-2"]
+    assert session.posts[0][1]["Type"] == "Album"
+    assert session.posts[0][1]["Privacy"] == "Unlisted"
+
+
+def test_fr41_smugmug_create_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    uploader = SmugMugUploader()
+    monkeypatch.setattr(uploader, "_session", lambda: CreatingSession(status=403))
+    with pytest.raises(UploadError, match="Reconnect it in Settings"):
+        uploader.create_album("Gala")
+
+
+def test_fr41_flickr_new_album_needs_no_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    def no_client(with_token: bool) -> Any:
+        raise AssertionError("Flickr was called")
+
+    monkeypatch.setattr(uploaders, "_flickr_client", no_client)
+    assert uploaders.FlickrUploader().create_album(" Gala ") == uploaders.AlbumChoice(
+        "Gala", "Gala"
+    )

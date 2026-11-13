@@ -9,7 +9,6 @@ from PySide6.QtGui import QImage, QKeyEvent, QMouseEvent, QPainter, QPaintEvent,
 from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
-    QCompleter,
     QDialog,
     QFileDialog,
     QGridLayout,
@@ -29,25 +28,15 @@ from .bridge import (
     FILE_SIZE_KB_MAX,
     FILE_SIZE_KB_MIN,
     FLICKR_PRIVACY,
-    AlbumChoice,
     Bridge,
     ExportPreset,
     Profile,
-    UploadError,
-    service_name,
 )
 from .theme import theme
+from .widgets.album_picker import AlbumPicker
 from .widgets.common import Button, Toggle, label, restyle
 
 PREVIEW_DEBOUNCE_MS = 150
-ALBUM_PLACEHOLDERS = {
-    "smugmug": "Pick or paste a link",
-    "flickr": "Pick or type a title",
-}
-NO_ALBUMS = {
-    "smugmug": "No galleries found. Paste a gallery link instead.",
-    "flickr": "No albums yet. Type a title and Flickr creates it.",
-}
 DESTINATION_LABELS = [
     ("none", "This computer only"),
     ("smugmug", "SmugMug"),
@@ -317,40 +306,20 @@ class EventEditor(QDialog):
         self.destination.setCurrentIndex(
             max(0, [v for v, _ in DESTINATION_LABELS].index(event.destination))
         )
-        # FR-39: pick one of the user's galleries, or type / paste as before.
-        self.gallery = QComboBox()
-        self.gallery.setEditable(True)
-        self.gallery.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.gallery.setMaxVisibleItems(12)
-        self.gallery.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        finder = QCompleter(self.gallery.model(), self.gallery)
-        finder.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-        finder.setFilterMode(Qt.MatchFlag.MatchContains)
-        finder.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        finder.popup().setObjectName("AlbumFinder")
-        self.gallery.setCompleter(finder)
-        album_line = self.gallery.lineEdit()
-        assert album_line is not None
-        self.album: QLineEdit = album_line
-        self.album.setText(event.album_name or event.album)
-        self.album_reload = Button("", "quiet", icon="refresh-cw", icon_token="text-2")
-        self.album_reload.clicked.connect(self.load_albums)
-        album_box = QWidget()
-        album_row = QHBoxLayout(album_box)
-        album_row.setContentsMargins(0, 0, 0, 0)
-        album_row.setSpacing(4)
-        album_row.addWidget(self.gallery, 1)
-        album_row.addWidget(self.album_reload)
-        self.album_error = error_label()
-        self.album_hint = label("", "secondary", wrap=True)
-        self.album_hint.hide()
-        self.album_field = field("Album", album_box, self.album_error)
-        self.album_field.layout().addWidget(self.album_hint)  # type: ignore[union-attr]
-        self.gallery.setAccessibleName("Album")
-        self._album_caption = self.album_field.findChild(QLabel)
-        self._albums: dict[str, AlbumChoice] = {}  # shown text -> gallery
-        self._albums_for = ""  # destination the list belongs to
-        self._albums_token = 0
+        # FR-39 / FR-41: pick one of the user's galleries, make one, or type / paste.
+        self.album_picker = AlbumPicker(
+            bridge,
+            event.destination,
+            event.album,
+            event.album_name,
+            suggest=lambda: self.name.text().strip(),
+        )
+        self.gallery = self.album_picker.gallery
+        self.album = self.album_picker.album
+        self.album_reload = self.album_picker.reload
+        self.album_hint = self.album_picker.hint
+        self.album_error = self.album_picker.error
+        self.album_field: QWidget = self.album_picker
         self.privacy = QComboBox()
         for value in FLICKR_PRIVACY:
             self.privacy.addItem(PRIVACY_LABELS[value], value)
@@ -566,7 +535,8 @@ class EventEditor(QDialog):
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(PREVIEW_DEBOUNCE_MS)
         self._debounce.timeout.connect(self._request_preview)
-        for line in (self.name, self.album, self.keywords, self.custom_name):
+        self.album_picker.changed.connect(self._changed)
+        for line in (self.name, self.keywords, self.custom_name):
             line.textChanged.connect(self._changed)
         for combo in (self.destination, self.privacy, self.naming):
             combo.currentIndexChanged.connect(self._changed)
@@ -591,7 +561,7 @@ class EventEditor(QDialog):
         bridge.preview_ready.connect(self._on_preview)
         self._load_watermark_thumb()
         self._changed()
-        self.load_albums()
+        self.album_picker.load()
         self.name.setFocus()
         self.name.selectAll()
 
@@ -605,7 +575,7 @@ class EventEditor(QDialog):
             self._event,
             name=self.name.text().strip(),
             destination=self.destination.currentData(),
-            **self._album_fields(),
+            **self.album_picker.fields(),
             flickr_privacy=self.privacy.currentData(),
             keywords=self.keywords.text().strip(),
             hold_uploads=self.hold.isChecked(),
@@ -628,77 +598,6 @@ class EventEditor(QDialog):
             file_size_kb=self.size_kb.value(),
         )
 
-    def _album_fields(self) -> dict[str, str]:
-        """``album`` and ``album_name`` for what the album box now shows (FR-39)."""
-        text = self.album.text().strip()
-        destination = self.destination.currentData()
-        choice = self._albums.get(text) if self._albums_for == destination else None
-        if choice is not None:
-            return {"album": choice.value, "album_name": choice.name}
-        saved = self._event
-        if text and saved.album_name and saved.destination == destination:
-            if text == saved.album_name:  # list not loaded (yet): keep the saved gallery
-                return {"album": saved.album, "album_name": saved.album_name}
-        return {"album": text, "album_name": ""}
-
-    # ---------------------------------------------------------------- albums
-    def load_albums(self) -> None:
-        """Ask the service for the user's galleries, off the UI thread."""
-        destination = self.destination.currentData()
-        self._albums_token += 1
-        token = self._albums_token
-        if destination not in ALBUM_PLACEHOLDERS:
-            return
-        self._show_album_hint(f"Loading your {self._album_word(destination)}…")
-        self.album_reload.setEnabled(False)
-        self.bridge.list_albums(
-            destination, lambda result: self._on_albums(token, destination, result)
-        )
-
-    @staticmethod
-    def _album_word(destination: str) -> str:
-        return "galleries" if destination == "smugmug" else "albums"
-
-    def _show_album_hint(self, text: str) -> None:
-        self.album_hint.setText(text)
-        self.album_hint.setVisible(bool(text))
-
-    def _on_albums(self, token: int, destination: str, result: object) -> None:
-        if token != self._albums_token:
-            return  # the destination changed, or Reload was pressed again
-        self.album_reload.setEnabled(True)
-        if not isinstance(result, list):
-            if isinstance(result, UploadError):
-                self._show_album_hint(result.message)
-            else:
-                self._show_album_hint(
-                    f"Can't load your {service_name(destination)} "
-                    f"{self._album_word(destination)}. Press Reload to try again."
-                )
-            return
-        current = self.current()
-        names = [choice.name for choice in result]
-        shown: dict[str, AlbumChoice] = {}
-        for choice in result:
-            text = choice.name
-            if names.count(choice.name) > 1 and choice.where:
-                text = f"{choice.name} — {choice.where}"
-            shown.setdefault(text, choice)
-        picked = self.bridge.match_album(result, current.album)
-        self.gallery.blockSignals(True)
-        self.album.blockSignals(True)
-        self.gallery.clear()
-        self.gallery.addItems(list(shown))
-        self._albums, self._albums_for = shown, destination
-        text = current.album_name or current.album
-        if picked is not None:
-            text = next(t for t, c in shown.items() if c == picked)
-        self.album.setText(text)
-        self.gallery.blockSignals(False)
-        self.album.blockSignals(False)
-        self._show_album_hint("" if shown else NO_ALBUMS[destination])
-        self._changed()
-
     def errors(self) -> dict[str, str]:
         found = self.current().validate(self._other_names)
         if self.watermark.isChecked() and self._watermark_broken and "watermark_path" not in found:
@@ -711,11 +610,6 @@ class EventEditor(QDialog):
         for widget in (self.album_field, self.keywords_field, self.hold_row, self.keep_row):
             widget.setVisible(uploads)
         self.privacy_field.setVisible(event.destination == "flickr")
-        if self._album_caption is not None:
-            self._album_caption.setText("Gallery" if event.destination == "smugmug" else "Album")
-        self.album.setPlaceholderText(ALBUM_PLACEHOLDERS.get(event.destination, ""))
-        self.album_reload.setToolTip(f"Reload {self._album_word(event.destination)}")
-        self.album_reload.setAccessibleName(f"Reload {self._album_word(event.destination)}")
         self.wb_strength.setEnabled(event.auto_wb)
         self.watermark_box.setVisible(event.watermark)
         self.watermark_name.setText(
@@ -744,16 +638,7 @@ class EventEditor(QDialog):
         self._debounce.start()
 
     def _destination_changed(self) -> None:
-        """A different service: its own list, and no gallery from the old one."""
-        destination = self.destination.currentData()
-        if destination == self._albums_for:
-            return
-        self.gallery.blockSignals(True)
-        self.gallery.clear()
-        self.gallery.blockSignals(False)
-        self._albums, self._albums_for = {}, ""
-        self._show_album_hint("")
-        self.load_albums()
+        self.album_picker.set_destination(self.destination.currentData())
 
     def _toggle_more(self) -> None:
         opened = self.more_box.isHidden()

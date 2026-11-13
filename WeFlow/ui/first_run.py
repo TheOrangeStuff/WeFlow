@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from .bridge import SERVICES, Bridge, Profile
 from .event_editor import DESTINATION_LABELS, error_label, field
 from .settings_dialog import LibraryRow, ServiceRow
+from .widgets.album_picker import AlbumPicker
 from .widgets.common import Button, label, restyle
 
 STEPS = ("Where should photos be saved?", "Connect a service", "Create your first event")
@@ -58,9 +59,14 @@ class FirstRun(QDialog):
         self.destination = QComboBox()
         for value, text in DESTINATION_LABELS:
             self.destination.addItem(text, value)
-        self.album = QLineEdit()
-        self.album_error = error_label()
-        self.album_field = field("Album", self.album, self.album_error)
+        # FR-39 / FR-41: the same gallery list as the event editor, since the
+        # previous step may have just signed in.
+        self.album_picker = AlbumPicker(
+            bridge, self.destination.currentData(), suggest=lambda: self.name.text().strip()
+        )
+        self.album = self.album_picker.album
+        self.album_error = self.album_picker.error
+        self.album_field = self.album_picker
         event_page = QWidget()
         event_column = QVBoxLayout(event_page)
         event_column.setContentsMargins(0, 0, 0, 0)
@@ -69,8 +75,11 @@ class FirstRun(QDialog):
         event_column.addWidget(field("Where photos go", self.destination))
         event_column.addWidget(self.album_field)
         event_column.addStretch(1)
-        for signal in (self.name.textChanged, self.album.textChanged):
+        for signal in (self.name.textChanged, self.album_picker.changed):
             signal.connect(self._validate)
+        self.destination.currentIndexChanged.connect(
+            lambda: self.album_picker.set_destination(self.destination.currentData())
+        )
         self.destination.currentIndexChanged.connect(self._validate)
 
         library_page = QWidget()
@@ -108,11 +117,13 @@ class FirstRun(QDialog):
         self.go(0)
 
     def current_event(self) -> Profile:
+        album = self.album_picker.fields()
         return replace(
             self._draft,
             name=self.name.text().strip(),
             destination=self.destination.currentData(),
-            album=self.album.text().strip(),
+            album=album["album"],
+            album_name=album["album_name"],
         )
 
     def _validate(self) -> None:
@@ -151,6 +162,7 @@ class FirstRun(QDialog):
         self.heading.setText(STEPS[index])
         self.intro.setText(INTROS[index])
         if index == 2:
+            self.album_picker.load()  # the user may have just signed in
             self._validate()
             self.name.setFocus()
             self.name.selectAll()
