@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import logging
 import threading
 from typing import Protocol
 
@@ -23,6 +25,10 @@ FLICKR_TOKEN_SECRET = "flickr_token_secret"
 # costs its own macOS keychain prompt, so one entry means one prompt, not eight.
 # The eight entries above are still read once to carry an older sign-in over.
 BUNDLE_ENTRY = "credentials"
+# Used when BUNDLE_ENTRY was made by another build and macOS will not let this one
+# read or replace it. Read first: when it exists it is the newer of the two.
+SPARE_ENTRY = "credentials-2"
+_ACCOUNTS = (SPARE_ENTRY, BUNDLE_ENTRY)
 _LEGACY_NAMES = (
     SMUGMUG_API_KEY,
     SMUGMUG_API_SECRET,
@@ -34,6 +40,8 @@ _LEGACY_NAMES = (
     FLICKR_TOKEN_SECRET,
 )
 _STAMP = "_written_by"
+
+log = logging.getLogger("WeFlow.secrets")  # entry names and errors only: no values
 
 
 class SecretsError(Exception):
@@ -52,11 +60,16 @@ class KeyringBackend:
     The first run of a new version writes the entry again. On macOS that makes this
     build the entry's creator, so later runs read it without asking, even when
     "Always Allow" did not stick (unsigned builds change identity every release).
+
+    A keychain step the user refuses, or that macOS blocks, never stops sign-in:
+    older entries are read best effort, and when the main entry cannot be read or
+    replaced the secrets go to a spare entry this build creates itself.
     """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._values: dict[str, str] | None = None
+        self._account = BUNDLE_ENTRY
 
     @staticmethod
     def _read(name: str) -> str:
@@ -66,26 +79,39 @@ class KeyringBackend:
         try:
             return keyring.get_password(SERVICE, name) or ""
         except KeyringError as exc:
+            log.warning("keychain read of %s failed: %s", name, exc)
             raise SecretsError("The system keychain is not available.") from exc
 
-    @staticmethod
-    def _write(values: dict[str, str]) -> None:
+    def _write(self, values: dict[str, str]) -> None:
         import keyring
         from keyring.errors import KeyringError
 
         data = {k: v for k, v in values.items() if v}
         data[_STAMP] = __version__
-        try:
-            keyring.set_password(SERVICE, BUNDLE_ENTRY, json.dumps(data))
-        except KeyringError as exc:
-            raise SecretsError("The system keychain is not available.") from exc
+        blob = json.dumps(data)
+        accounts = [self._account] + [a for a in (BUNDLE_ENTRY, SPARE_ENTRY) if a != self._account]
+        for account in accounts:
+            try:
+                keyring.set_password(SERVICE, account, blob)
+            except KeyringError as exc:
+                log.warning("keychain write of %s failed: %s", account, exc)
+                continue
+            self._account = account
+            return
+        raise SecretsError("The system keychain is not available.")
 
     def _load(self) -> dict[str, str]:
         if self._values is not None:
             return self._values
-        raw = self._read(BUNDLE_ENTRY)
-        values: dict[str, str] = {}
-        stamp = ""
+        raw, stamp, values = "", "", {}
+        for account in _ACCOUNTS:
+            try:
+                raw = self._read(account)
+            except SecretsError:
+                continue  # refused or blocked: try the spare entry
+            if raw:
+                self._account = account
+                break
         if raw:
             try:
                 parsed = json.loads(raw)
@@ -95,10 +121,14 @@ class KeyringBackend:
                 stamp = str(parsed.pop(_STAMP, ""))
                 values = {str(k): str(v) for k, v in parsed.items() if v}
         else:
-            # First run since 1.6.3: carry the separate entries over, once.
-            values = {n: v for n in _LEGACY_NAMES if (v := self._read(n))}
-        if stamp != __version__ and (values or raw):
-            self._write(values)
+            # First run since 1.6.3: carry the separate entries over, best effort.
+            for name in _LEGACY_NAMES:
+                with contextlib.suppress(SecretsError):
+                    if value := self._read(name):
+                        values[name] = value
+        if values and stamp != __version__:
+            with contextlib.suppress(SecretsError):  # still usable from memory this run
+                self._write(values)
         self._values = values
         return values
 

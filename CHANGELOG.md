@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.4 — 2026-11-13
+
+- Fixed: pressing **Connect** could say the keychain was not available. If your Mac
+  refuses WeFlow access to an older keychain item, WeFlow now saves to a new one instead.
+- If you press **Deny** on a keychain prompt, WeFlow carries on. You may need to enter
+  your API key again.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.6.3 — 2026-11-13
 
 - On Mac, WeFlow no longer keeps asking to use your keychain. The first time you open

@@ -290,3 +290,11 @@ run of each version rewrites it, which makes that build the entry's creator so l
 do not ask. The eight old entries are read once to migrate and left in place, so an
 older version still finds its sign-in. The unsigned build is now ad-hoc signed as a whole
 bundle so its signature is valid.
+
+## 1.6.4 — keychain failures never block sign-in
+
+If macOS will not let this build read or replace the `credentials` entry (made by an
+older unsigned build, or the user pressed Deny), secrets go to a spare entry,
+`credentials-2`, that this build creates itself. The spare entry is read first when it
+exists. Old per-item entries are read best effort, one refusal no longer fails the rest.
+Keychain errors are logged (entry name and OS error only) so "Copy log" shows the cause.

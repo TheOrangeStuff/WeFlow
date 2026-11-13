@@ -117,7 +117,7 @@ KEYCHAIN_NAMES_1_0 = {
 def test_update_keychain_names_are_frozen() -> None:
     """Renaming any of these signs every user out on update. Migrate instead."""
     assert secrets.SERVICE == "WeFlow"
-    skip = {"SERVICE", "BUNDLE_ENTRY"}
+    skip = {"SERVICE", "BUNDLE_ENTRY", "SPARE_ENTRY"}
     names = {v for k, v in vars(secrets).items() if k.isupper() and k[0] != "_" and k not in skip}
     assert names == KEYCHAIN_NAMES_1_0
 
@@ -228,9 +228,34 @@ def test_nfr06_keychain_one_entry_carries_old_sign_in(monkeypatch: pytest.Monkey
     later = secrets.KeyringBackend()
     later.get(secrets.SMUGMUG_API_KEY)
     later.get(secrets.FLICKR_TOKEN)
-    assert reads == [secrets.BUNDLE_ENTRY]
+    assert reads == [secrets.SPARE_ENTRY, secrets.BUNDLE_ENTRY]
 
     # A new version writes the entry again (so it becomes the entry's creator on macOS).
     store[secrets.BUNDLE_ENTRY] = json.dumps({secrets.FLICKR_TOKEN: "TOK", "_written_by": "0.9"})
     secrets.KeyringBackend().get(secrets.FLICKR_TOKEN)
     assert json.loads(store[secrets.BUNDLE_ENTRY])["_written_by"] != "0.9"
+
+
+def test_nfr06_refused_keychain_still_connects(monkeypatch: pytest.MonkeyPatch) -> None:
+    """macOS refuses the entry an older build made: save to a spare entry instead."""
+    import keyring
+    from keyring.errors import KeyringError
+
+    store: dict[str, str] = {secrets.BUNDLE_ENTRY: "old", secrets.SMUGMUG_TOKEN: "x"}
+    locked = {secrets.BUNDLE_ENTRY, secrets.SMUGMUG_TOKEN}
+
+    def get(service: str, name: str) -> str | None:
+        if name in locked:
+            raise KeyringError("denied")
+        return store.get(name)
+
+    def put(service: str, name: str, value: str) -> None:
+        if name in locked:
+            raise KeyringError("denied")
+        store[name] = value
+
+    monkeypatch.setattr(keyring, "get_password", get)
+    monkeypatch.setattr(keyring, "set_password", put)
+    secrets.KeyringBackend().set(secrets.SMUGMUG_API_KEY, "KEY")
+    assert secrets.KeyringBackend().get(secrets.SMUGMUG_API_KEY) == "KEY"
+    assert "KEY" in store[secrets.SPARE_ENTRY]
