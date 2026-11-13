@@ -8,6 +8,7 @@
   new album when its first photo goes up.
 - When you set up WeFlow for the first time, you can now pick your gallery from a list
   as soon as you have signed in.
+- Hover over a button or switch to see what it does.
 - Your events, settings and sign-ins carry over unchanged.
 
 ## 1.5.0 — 2026-11-13
