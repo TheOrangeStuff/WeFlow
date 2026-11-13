@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
@@ -248,6 +249,11 @@ class SettingsDialog(QDialog):
         self.updates.toggled.connect(bridge.set_check_updates)
         self.update_link = Button("", "link")
         self.update_link.clicked.connect(bridge.open_update_page)
+        self.copy_log = Button("Copy log", icon="copy")
+        self.copy_log.setToolTip(
+            "Copy recent activity, to paste into a message when asking for help."
+        )
+        self.copy_log.clicked.connect(self._copy_log)
         self.done_button = Button("Done", "primary")
         self.done_button.clicked.connect(self.accept)
 
@@ -274,6 +280,17 @@ class SettingsDialog(QDialog):
             line.addWidget(label(caption, "body"), 1)
             line.addWidget(toggle)
             column.addLayout(line)
+        line = QHBoxLayout()
+        line.addWidget(
+            label(
+                "Something not working? Copy the log and paste it in your message.",
+                "secondary",
+                wrap=True,
+            ),
+            1,
+        )
+        line.addWidget(self.copy_log)
+        column.addLayout(line)
         column.addStretch(1)
         footer = QHBoxLayout()
         footer.setSpacing(8)
@@ -285,6 +302,20 @@ class SettingsDialog(QDialog):
         bridge.update_changed.connect(self._show_update)
         self._show_update()
         bridge.refresh_services()
+
+    def _copy_log(self) -> None:
+        self.copy_log.setEnabled(False)
+        self.bridge.read_log(self._on_log)
+
+    def _on_log(self, text: object) -> None:
+        self.copy_log.setEnabled(True)
+        if not isinstance(text, str):
+            self.copy_log.setText("Can't read the log")
+        else:
+            clipboard = QGuiApplication.clipboard()
+            clipboard.setText(text or "The log is empty.")
+            self.copy_log.setText("Copied")
+        QTimer.singleShot(2000, self.copy_log, lambda: self.copy_log.setText("Copy log"))
 
     def _show_update(self) -> None:
         update = self.bridge.update

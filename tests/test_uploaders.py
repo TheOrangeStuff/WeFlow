@@ -364,3 +364,32 @@ def test_fr41_flickr_new_album_needs_no_call(monkeypatch: pytest.MonkeyPatch) ->
     assert uploaders.FlickrUploader().create_album(" Gala ") == uploaders.AlbumChoice(
         "Gala", "Gala"
     )
+
+
+def test_nfr10_smugmug_failures_are_logged(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import requests
+
+    class Unreachable:
+        def get(self, url: str, **kwargs: Any) -> FakeResponse:
+            raise requests.ReadTimeout("read timed out")
+
+    uploader = SmugMugUploader()
+    monkeypatch.setattr(uploader, "_session", lambda: Unreachable())
+    with caplog.at_level("INFO", logger="WeFlow"), pytest.raises(UploadError, match="Can't reach"):
+        uploader.list_albums()
+    assert "SmugMug GET /api/v2!authuser failed" in caplog.text
+    assert "ReadTimeout: read timed out" in caplog.text
+
+
+def test_nfr10_recent_log_is_capped_at_whole_lines(tmp_path: Path) -> None:
+    from WeFlow.core import logs
+
+    folder = logs.log_folder(tmp_path)
+    folder.mkdir()
+    (folder / "weflow.log.1").write_text("old line\n")
+    (folder / "weflow.log").write_text("".join(f"line {i}\n" for i in range(1000)))
+    text = logs.recent_log(tmp_path, limit=100)
+    assert len(text) <= 100 and text.startswith("line ") and text.endswith("line 999\n")
+    assert "old line" in logs.recent_log(tmp_path)

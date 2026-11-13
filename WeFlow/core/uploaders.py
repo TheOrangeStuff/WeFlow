@@ -6,8 +6,10 @@ already up is never sent again.
 
 from __future__ import annotations
 
+import logging
 import re
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -22,6 +24,8 @@ SMUGMUG_REQUEST_TOKEN = f"{SMUGMUG_API}/services/oauth/1.0a/getRequestToken"
 SMUGMUG_AUTHORIZE = f"{SMUGMUG_API}/services/oauth/1.0a/authorize"
 SMUGMUG_ACCESS_TOKEN = f"{SMUGMUG_API}/services/oauth/1.0a/getAccessToken"
 TIMEOUT = (15, 300)
+API_TIMEOUT = (15, 45)  # connect, read: a long gallery page can take a while
+log = logging.getLogger("WeFlow.uploaders")  # paths, statuses and timings only: no secrets
 SERVICE_NAMES = {"smugmug": "SmugMug", "flickr": "Flickr", "none": "this computer"}
 
 
@@ -50,6 +54,7 @@ class AlbumChoice:
 
 MAX_ALBUMS = 2000  # stop listing after this many, so a huge account stays quick
 SMUGMUG_PAGE = 100
+SMUGMUG_ALBUM_FIELDS = "Uri,Name,NodeID,UrlPath,Date"  # _filter: skip the rest of each gallery
 
 
 class Uploader(Protocol):
@@ -262,6 +267,35 @@ class SmugMugUploader:
             self._local.session = cached = ((key, token), session)
         return cached[1]
 
+    def _request(self, method: str, url: str, **kwargs: Any) -> Any:
+        """Send one SmugMug request and log what happened (never headers or bodies)."""
+        import requests
+
+        where = urlparse(url).path or url
+        started = time.monotonic()
+        try:
+            session = self._session()
+            call = session.post if method == "POST" else session.get
+            response = call(url, **kwargs)
+        except requests.RequestException as exc:
+            log.warning(
+                "SmugMug %s %s failed after %.1fs: %s: %s",
+                method,
+                where,
+                time.monotonic() - started,
+                type(exc).__name__,
+                exc,
+            )
+            raise
+        log.info(
+            "SmugMug %s %s -> %s in %.1fs",
+            method,
+            where,
+            response.status_code,
+            time.monotonic() - started,
+        )
+        return response
+
     def album_uri(self, album: str) -> str:
         """Resolve the event's album field to an AlbumUri (cached)."""
         import requests
@@ -274,10 +308,11 @@ class SmugMugUploader:
             kind, value = smugmug_album_ref(album)
             if kind == "node":
                 try:
-                    response = self._session().get(
+                    response = self._request(
+                        "GET",
                         f"{SMUGMUG_API}/api/v2/node/{value}",
                         headers={"Accept": "application/json"},
-                        timeout=TIMEOUT[0],
+                        timeout=API_TIMEOUT,
                     )
                 except requests.RequestException as exc:
                     raise _offline("SmugMug") from exc
@@ -306,10 +341,12 @@ class SmugMugUploader:
         }
         if event.keyword_list():
             headers["X-Smug-Keywords"] = quote("; ".join(event.keyword_list()), safe=";, ")
-        session = self._session()
+        self._session()  # not signed in: say so before touching the file
         try:
             with open(path, "rb") as fh:
-                response = session.post(SMUGMUG_UPLOAD, data=fh, headers=headers, timeout=TIMEOUT)
+                response = self._request(
+                    "POST", SMUGMUG_UPLOAD, data=fh, headers=headers, timeout=TIMEOUT
+                )
         except requests.RequestException as exc:
             raise _offline("SmugMug") from exc
         except OSError as exc:
@@ -344,11 +381,12 @@ class SmugMugUploader:
         import requests
 
         try:
-            response = self._session().get(
+            response = self._request(
+                "GET",
                 f"{SMUGMUG_API}{path}",
                 params=params,
                 headers={"Accept": "application/json"},
-                timeout=TIMEOUT[0],
+                timeout=API_TIMEOUT,
             )
         except requests.RequestException as exc:
             raise UploadError("Can't reach SmugMug. Check the connection and try again.") from exc
@@ -368,10 +406,12 @@ class SmugMugUploader:
             path = str(self._get_json("/api/v2!authuser")["User"]["Uris"]["UserAlbums"]["Uri"])
         except (KeyError, TypeError) as exc:
             raise UploadError("SmugMug did not send the gallery list. Try again.") from exc
+        started = time.monotonic()
         found: list[tuple[str, AlbumChoice]] = []
         start = 1
         while len(found) < MAX_ALBUMS:
-            body = self._get_json(path, {"start": start, "count": SMUGMUG_PAGE})
+            params = {"start": start, "count": SMUGMUG_PAGE, "_filter": SMUGMUG_ALBUM_FIELDS}
+            body = self._get_json(path, params)
             for album in body.get("Album") or []:
                 uri, name = album.get("Uri"), str(album.get("Name") or "").strip()
                 if not uri or not name:
@@ -384,6 +424,7 @@ class SmugMugUploader:
                 break
             start += int(pages.get("Count") or SMUGMUG_PAGE)
         found.sort(key=lambda item: item[0], reverse=True)
+        log.info("SmugMug listed %d galleries in %.1fs", len(found), time.monotonic() - started)
         return [choice for _, choice in found[:MAX_ALBUMS]]
 
     def create_album(self, name: str) -> AlbumChoice:
@@ -408,11 +449,12 @@ class SmugMugUploader:
                 "Privacy": SMUGMUG_NEW_PRIVACY,
             }
             try:
-                response = self._session().post(
+                response = self._request(
+                    "POST",
                     f"{SMUGMUG_API}{root}!children",
                     json=body,
                     headers={"Accept": "application/json"},
-                    timeout=TIMEOUT[0],
+                    timeout=API_TIMEOUT,
                 )
             except requests.RequestException as exc:
                 raise UploadError(
@@ -482,6 +524,8 @@ def _flickr_client(with_token: bool) -> Any:
 def _flickr_error(exc: Exception) -> UploadError:
     import flickrapi
     import requests
+
+    log.warning("Flickr call failed: %s: %s", type(exc).__name__, exc)
 
     if isinstance(exc, flickrapi.exceptions.FlickrError):
         code = getattr(exc, "code", None)

@@ -195,6 +195,7 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
   - SmugMug: `GET /api/v2!authuser` → `Uris.Node.Uri`, then `POST <node>!children` with `Type: Album`, the name, a `UrlName` built from it and `Privacy: Unlisted`. A 409 (address taken) retries with `-2` … `-5`. The new gallery is picked and shown at the top of the list.
   - Flickr can't hold an empty album, so the title is picked and Flickr makes the album with the first upload, as a typed title always did. No API call.
   - The first-run "Create your first event" step uses the same picker as the event editor.
+  - *(1.6.1)* The dropdown shows the 20 newest, then a **More galleries…** row that adds 20 more each time it is picked. Typing a name or pasting a link still finds any gallery. SmugMug pages ask only for the fields the list needs (`_filter`), with a 45 s read timeout.
 - **FR-40** *(1.5.0)* Originals are the lasting copy. For events that upload, processed copies are written to the hidden `.WeFlow/work/` folder.
   - Once a photo is uploaded **and** added to its album, its processed copy is deleted, or moved into `processed/` when the event's "Keep processed copies after upload" is on (off by default).
   - Held, waiting and failed photos keep their processed copy until they are up. If it goes missing before upload, it is made again from the original.
@@ -221,7 +222,7 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
   - Code signing and notarization steps are scripted, and read their credentials from environment variables.
 - **NFR-08** Memory use stays ≤ 1 GB while processing 45 MP files with 4 workers.
 - **NFR-09** Every error shown to the user says what happened and what to do, in ≤ 2 short sentences. No stack traces in the UI.
-- **NFR-10** Logs rotate in `<app-data>/logs/` (5 × 1 MB).
+- **NFR-10** Logs rotate in `<app-data>/logs/` (3 × 500 KB since 1.6.1, was 5 × 1 MB). Every SmugMug and Flickr call is logged with its path, status, time taken or error type, and never headers, tokens or bodies. Settings has **Copy log**, which copies the newest 60,000 characters to the clipboard.
 
 ---
 

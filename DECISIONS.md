@@ -256,6 +256,17 @@ owner and accepted on 2026-11-11.
 73. **The gallery box is one widget (`ui/widgets/album_picker.py`)** shared by the event
     editor and the wizard, so the two can't drift apart.
 
+## 1.6.1 — logs to share, a shorter gallery list
+
+74. **Copy log copies only the newest 60,000 characters**, cut at a whole line, so the text
+    fits in a message. The files are now 3 × 500 KB.
+75. **SmugMug calls are logged with their path, status, time and error type**, never
+    headers or bodies, so OAuth tokens can't leak into a pasted log.
+76. **The list still fetches every gallery**, because SmugMug's gallery list isn't
+    sorted by date on the server. Only the dropdown is cut to 20 + "More…". To make
+    the fetch faster, each page asks for 5 fields (`_filter`), and reads may take
+    45 s, up from 15 s. **(owner's request: about 20, then more)**
+
 ## Not verified yet
 
 These need hardware, accounts or other operating systems (see `docs/manual-test.md`):

@@ -34,7 +34,7 @@ from WeFlow.core.config import (
     default_library,
 )
 from WeFlow.core.events import BatchUpdated, CardDetected, CardRemoved, Event, Notice
-from WeFlow.core.logs import setup_logging
+from WeFlow.core.logs import recent_log, setup_logging
 from WeFlow.core.pipeline import ACTIVE_STATES, Pipeline, plural
 from WeFlow.core.state import Batch
 from WeFlow.core.updates import Update
@@ -171,7 +171,9 @@ class Bridge(QObject):
             try:
                 result = job()
             except Exception as exc:
-                if not isinstance(exc, UploadError):
+                if isinstance(exc, UploadError):
+                    log.info("job stopped: %s", exc.message)
+                else:
                     log.exception("job failed")
                 result = exc
             if done is not None and not self._closed:
@@ -461,6 +463,10 @@ class Bridge(QObject):
     @staticmethod
     def match_album(choices: list[AlbumChoice], album: str) -> AlbumChoice | None:
         return uploaders.match_album(choices, album)
+
+    def read_log(self, done: Callable[[Any], None]) -> None:
+        """The newest part of the log, for "Copy log". ``done`` gets the text."""
+        self.run(lambda: recent_log(self.store.data_dir), done)
 
     def open_api_key_page(self, service: str) -> None:
         self.open_url(uploaders.API_KEY_PAGES[service])

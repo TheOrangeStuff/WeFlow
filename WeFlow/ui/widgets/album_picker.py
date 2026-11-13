@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QCompleter,
@@ -26,6 +27,8 @@ NO_ALBUMS = {
     "smugmug": "No galleries yet. Press + to make one.",
     "flickr": "No albums yet. Press + to make one.",
 }
+SHOW_STEP = 20  # galleries shown at first, and added by each "More …" press
+MORE = "more"  # item data of the "More galleries…" row
 FLICKR_LATER = "Flickr makes the album when the first photo goes up."
 
 
@@ -63,6 +66,8 @@ class AlbumPicker(QWidget):
         self.albums_for = ""  # destination the list belongs to
         self._token = 0
         self._new_token = 0  # bumped on Create and Cancel; stale answers are dropped
+        self._limit = SHOW_STEP  # how many of the newest galleries the dropdown shows
+        self._last_text = album_name or album  # the box's text, never the "More" row
 
         self.caption = label("Album", "label")
         self.gallery = QComboBox()
@@ -80,7 +85,7 @@ class AlbumPicker(QWidget):
         assert line is not None
         self.album: QLineEdit = line
         self.album.setText(album_name or album)
-        self.album.textChanged.connect(self.changed)
+        self.album.textChanged.connect(self._on_text)
         self.reload = Button("", "quiet", icon="refresh-cw", icon_token="text-2")
         self.reload.clicked.connect(self.load)
         self.new = Button("", "quiet", icon="plus", icon_token="text-2")
@@ -127,6 +132,23 @@ class AlbumPicker(QWidget):
         self._relabel()
 
     # ---------------------------------------------------------------- state
+    def more_text(self) -> str:
+        return f"More {album_word(self._destination)}…"
+
+    def _on_text(self, text: str) -> None:
+        if text == self.more_text() and self.gallery.findData(MORE) >= 0:
+            QTimer.singleShot(0, self.show_more)  # after the combo finishes selecting
+            return
+        self._last_text = text
+        self.changed.emit()
+
+    def show_more(self) -> None:
+        """The "More …" row: show the next ``SHOW_STEP`` galleries and reopen the list."""
+        self._limit += SHOW_STEP
+        self._show(self._choices, None, self._last_text)
+        if self.isVisible():
+            self.gallery.showPopup()
+
     def fields(self) -> dict[str, str]:
         """``album`` and ``album_name`` for what the box now shows (FR-39)."""
         text = self.album.text().strip()
@@ -148,6 +170,7 @@ class AlbumPicker(QWidget):
         self.gallery.clear()
         self.gallery.blockSignals(False)
         self._choices, self.albums, self.albums_for = [], {}, ""
+        self._limit = SHOW_STEP
         self._show_hint("")
         self._relabel()
         self.load()
@@ -198,28 +221,39 @@ class AlbumPicker(QWidget):
                     "Press Reload to try again."
                 )
             return
+        self._limit = SHOW_STEP
         self._show(result, self.bridge.match_album(result, self.fields()["album"]))
         self._show_hint("" if result else NO_ALBUMS[destination])
 
-    def _show(self, choices: list[AlbumChoice], picked: AlbumChoice | None) -> None:
-        """Fill the dropdown, newest first, and show ``picked`` (or keep the text)."""
-        names = [choice.name for choice in choices]
-        shown: dict[str, AlbumChoice] = {}
+    def _show(
+        self, choices: list[AlbumChoice], picked: AlbumChoice | None, text: str | None = None
+    ) -> None:
+        """Fill the dropdown with the newest ``_limit`` galleries (plus ``picked``) and a
+        "More …" row, then show ``picked``, or ``text``, or keep the current text."""
+        counts = Counter(choice.name for choice in choices)
+        named: dict[str, AlbumChoice] = {}  # every gallery, so a typed name still matches
         for choice in choices:
-            text = choice.name
-            if names.count(choice.name) > 1 and choice.where:
-                text = f"{choice.name} — {choice.where}"
-            shown.setdefault(text, choice)
-        current = self.fields()
+            label_text = choice.name
+            if counts[choice.name] > 1 and choice.where:
+                label_text = f"{choice.name} — {choice.where}"
+            named.setdefault(label_text, choice)
+        if text is None:
+            current = self.fields()
+            text = current["album_name"] or current["album"]
+        if picked is not None:
+            text = next(t for t, c in named.items() if c == picked)
+        visible = list(named)[: self._limit]
+        if text in named and text not in visible:
+            visible.append(text)  # the event's gallery, even when it is older
         self.gallery.blockSignals(True)
         self.album.blockSignals(True)
         self.gallery.clear()
-        self.gallery.addItems(list(shown))
-        self._choices, self.albums, self.albums_for = choices, shown, self._destination
-        text = current["album_name"] or current["album"]
-        if picked is not None:
-            text = next(t for t, c in shown.items() if c == picked)
+        self.gallery.addItems(visible)
+        if len(named) > len(visible):
+            self.gallery.addItem(self.more_text(), MORE)
+        self._choices, self.albums, self.albums_for = choices, named, self._destination
         self.album.setText(text)
+        self._last_text = text
         self.gallery.blockSignals(False)
         self.album.blockSignals(False)
         self.changed.emit()

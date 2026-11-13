@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.1 — 2026-11-13
+
+- The gallery list shows your 20 newest galleries. Pick **More galleries…** at the bottom
+  to see 20 more. Typing a name still finds any gallery.
+- The gallery list loads faster and waits longer for a slow connection.
+- New **Copy log** button in Settings. If something goes wrong, press it and paste the
+  text into your message.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.6.0 — 2026-11-13
 
 - Make a new gallery without leaving WeFlow. Press **+** next to the gallery box, type

@@ -372,6 +372,43 @@ def test_settings_library_sound_and_login(
     assert "still working" in dialog.library.note.text()
 
 
+def test_nfr10_copy_log_from_settings(qtbot, window, bridge, store) -> None:  # type: ignore[no-untyped-def]
+    folder = store.data_dir / "logs"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "weflow.log").write_text("line one\nSmugMug GET /api/v2!authuser -> 200\n")
+    dialog = SettingsDialog(bridge, window)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.mouseClick(dialog.copy_log, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: dialog.copy_log.text() == "Copied", timeout=3000)
+    shoot(dialog, "settings-copy-log-light")
+    assert "authuser -> 200" in QApplication.clipboard().text()
+
+
+def test_fr41_shows_twenty_newest_then_more(
+    qtbot, window, bridge, store, event, fake_uploader
+) -> None:  # type: ignore[no-untyped-def]
+    fake_uploader.albums = [
+        uploaders.AlbumChoice(f"/api/v2/album/G{i}", f"Gallery {i}") for i in range(45)
+    ]
+    event.destination, event.album = "smugmug", "/api/v2/album/G30"  # an older one
+    bridge.save_event(event)
+    editor = EventEditor(bridge, bridge.active(), window)
+    qtbot.addWidget(editor)
+    editor.show()
+    gallery = editor.gallery
+    qtbot.waitUntil(lambda: gallery.count() == 22, timeout=3000)  # 20 + saved + More
+    assert gallery.itemText(0) == "Gallery 0" and gallery.itemText(20) == "Gallery 30"
+    assert gallery.itemText(21) == "More galleries…" and editor.album.text() == "Gallery 30"
+    gallery.setCurrentIndex(21)  # pick "More galleries…"
+    qtbot.waitUntil(lambda: gallery.count() == 41, timeout=3000)  # 40 + More
+    assert editor.album.text() == "Gallery 30"  # the choice is kept
+    assert editor.current().album == "/api/v2/album/G30"
+    gallery.hidePopup()
+    editor.album.setText("Gallery 44")  # typing an older name still finds it
+    assert editor.current().album == "/api/v2/album/G44"
+
+
 # --------------------------------------------------------------------- first run
 def test_fr41_new_gallery_from_the_editor(
     qtbot, window, bridge, store, event, fake_uploader
