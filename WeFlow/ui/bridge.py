@@ -117,6 +117,8 @@ class Bridge(QObject):
         self.pipeline.set_paced(store.settings.paced)
         self.connected: dict[str, bool] = dict.fromkeys(SERVICES, False)
         self.has_keys: dict[str, bool] = dict.fromkeys(SERVICES, False)
+        self._albums: dict[str, list[AlbumChoice]] = {}  # galleries already fetched, per service
+        self._album_waiters: dict[str, list[Callable[[Any], None]]] = {}  # fetches in flight
         self._sample: tuple[str, Any] | None = None
         self._sample_lock = threading.Lock()
         self.update: Update | None = None  # a newer published version, once known
@@ -457,14 +459,26 @@ class Bridge(QObject):
             return True
 
         def finished(result: Any) -> None:
+            self._albums.pop(service, None)  # maybe a different account now
             self.refresh_services()
             done(result)
 
         self.run(job, finished)
 
-    def list_albums(self, destination: str, done: Callable[[Any], None]) -> None:
-        """FR-39: fetch the user's galleries. ``done`` gets a list of ``AlbumChoice``
-        or an ``UploadError``."""
+    def list_albums(
+        self, destination: str, done: Callable[[Any], None], refresh: bool = False
+    ) -> None:
+        """FR-39: the user's galleries. ``done`` gets a list of ``AlbumChoice`` or an
+        ``UploadError``. A list fetched earlier is reused unless ``refresh`` is set,
+        and callers asking while a fetch is running share its answer."""
+        if not refresh and destination in self._albums:
+            done(list(self._albums[destination]))
+            return
+        waiters = self._album_waiters.get(destination)
+        if waiters is not None:
+            waiters.append(done)
+            return
+        self._album_waiters[destination] = [done]
 
         def job() -> list[AlbumChoice]:
             try:
@@ -472,7 +486,13 @@ class Bridge(QObject):
             except secrets.SecretsError as exc:
                 raise UploadError(f"{exc} Unlock it and try again.", True) from exc
 
-        self.run(job, done)
+        def finished(result: Any) -> None:
+            if isinstance(result, list):
+                self._albums[destination] = result
+            for waiter in self._album_waiters.pop(destination, []):
+                waiter(list(result) if isinstance(result, list) else result)
+
+        self.run(job, finished)
 
     def create_album(self, destination: str, name: str, done: Callable[[Any], None]) -> None:
         """FR-41: make a new gallery or album. ``done`` gets the ``AlbumChoice``
@@ -484,7 +504,12 @@ class Bridge(QObject):
             except secrets.SecretsError as exc:
                 raise UploadError(f"{exc} Unlock it and try again.", True) from exc
 
-        self.run(job, done)
+        def finished(result: Any) -> None:
+            if isinstance(result, AlbumChoice) and destination in self._albums:
+                self._albums[destination].insert(0, result)
+            done(result)
+
+        self.run(job, finished)
 
     @staticmethod
     def match_album(choices: list[AlbumChoice], album: str) -> AlbumChoice | None:
@@ -498,6 +523,7 @@ class Bridge(QObject):
         self.open_url(uploaders.API_KEY_PAGES[service])
 
     def disconnect_service(self, service: str) -> None:
+        self._albums.pop(service, None)
         self.run(lambda: uploaders.disconnect(service), lambda _result: self.refresh_services())
 
     @staticmethod

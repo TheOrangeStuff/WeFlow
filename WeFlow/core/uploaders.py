@@ -10,6 +10,7 @@ import logging
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -54,6 +55,7 @@ class AlbumChoice:
 
 MAX_ALBUMS = 2000  # stop listing after this many, so a huge account stays quick
 SMUGMUG_PAGE = 100
+SMUGMUG_PARALLEL = 6  # gallery pages fetched at the same time
 SMUGMUG_ALBUM_FIELDS = "Uri,Name,NodeID,UrlPath,Date"  # _filter: skip the rest of each gallery
 
 
@@ -267,14 +269,17 @@ class SmugMugUploader:
             self._local.session = cached = ((key, token), session)
         return cached[1]
 
-    def _request(self, method: str, url: str, **kwargs: Any) -> Any:
-        """Send one SmugMug request and log what happened (never headers or bodies)."""
+    def _request(self, method: str, url: str, session: Any = None, **kwargs: Any) -> Any:
+        """Send one SmugMug request and log what happened (never headers or bodies).
+
+        ``session`` lets worker threads share one signed-in session, so the keychain
+        is read once rather than once per thread."""
         import requests
 
         where = urlparse(url).path or url
         started = time.monotonic()
         try:
-            session = self._session()
+            session = session or self._session()
             call = session.post if method == "POST" else session.get
             response = call(url, **kwargs)
         except requests.RequestException as exc:
@@ -377,6 +382,7 @@ class SmugMugUploader:
         path: str,
         params: dict[str, Any] | None = None,
         failed: str = "SmugMug did not send the gallery list. Try again.",
+        session: Any = None,
     ) -> dict[str, Any]:
         import requests
 
@@ -384,6 +390,7 @@ class SmugMugUploader:
             response = self._request(
                 "GET",
                 f"{SMUGMUG_API}{path}",
+                session=session,
                 params=params,
                 headers={"Accept": "application/json"},
                 timeout=API_TIMEOUT,
@@ -408,10 +415,13 @@ class SmugMugUploader:
             raise UploadError("SmugMug did not send the gallery list. Try again.") from exc
         started = time.monotonic()
         found: list[tuple[str, AlbumChoice]] = []
-        start = 1
-        while len(found) < MAX_ALBUMS:
+        session = self._session()
+
+        def page(start: int) -> dict[str, Any]:
             params = {"start": start, "count": SMUGMUG_PAGE, "_filter": SMUGMUG_ALBUM_FIELDS}
-            body = self._get_json(path, params)
+            return self._get_json(path, params, session=session)
+
+        def take(body: dict[str, Any]) -> None:
             for album in body.get("Album") or []:
                 uri, name = album.get("Uri"), str(album.get("Name") or "").strip()
                 if not uri or not name:
@@ -419,10 +429,24 @@ class SmugMugUploader:
                 folder = str(album.get("UrlPath") or "").rsplit("/", 1)[0].strip("/")
                 choice = AlbumChoice(str(uri), name, str(album.get("NodeID") or ""), folder)
                 found.append((str(album.get("Date") or ""), choice))
-            pages = body.get("Pages") or {}
-            if not pages.get("NextPage"):
-                break
-            start += int(pages.get("Count") or SMUGMUG_PAGE)
+
+        first = page(1)
+        take(first)
+        pages = first.get("Pages") or {}
+        total = int(pages.get("Total") or 0)
+        if total:
+            # Each page can take many seconds: ask for the rest all at once.
+            starts = list(range(1 + SMUGMUG_PAGE, min(total, MAX_ALBUMS) + 1, SMUGMUG_PAGE))
+            with ThreadPoolExecutor(max_workers=SMUGMUG_PARALLEL) as pool:
+                for body in pool.map(page, starts):
+                    take(body)
+        else:
+            start = 1
+            while pages.get("NextPage") and len(found) < MAX_ALBUMS:
+                start += int(pages.get("Count") or SMUGMUG_PAGE)
+                body = page(start)
+                take(body)
+                pages = body.get("Pages") or {}
         found.sort(key=lambda item: item[0], reverse=True)
         log.info("SmugMug listed %d galleries in %.1fs", len(found), time.monotonic() - started)
         return [choice for _, choice in found[:MAX_ALBUMS]]

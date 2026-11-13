@@ -214,8 +214,10 @@ def test_fake_uploader_contract(tmp_path: Path) -> None:
 class ListingSession:
     """Answers SmugMug's authuser and paged album-list calls."""
 
-    def __init__(self, pages: list[list[dict[str, Any]]], status: int = 200) -> None:
-        self.pages, self.status = pages, status
+    def __init__(
+        self, pages: list[list[dict[str, Any]]], status: int = 200, total: bool = True
+    ) -> None:
+        self.pages, self.status, self.total = pages, status, total
         self.calls: list[tuple[str, dict[str, Any] | None]] = []
 
     def get(
@@ -227,7 +229,12 @@ class ListingSession:
             return FakeResponse(self.status, {"Response": {"User": {"Uris": uris}}})
         index = (int(params["start"]) - 1) // uploaders.SMUGMUG_PAGE if params else 0
         more = index + 1 < len(self.pages)
-        pages = {"Count": uploaders.SMUGMUG_PAGE, "NextPage": "next" if more else None}
+        pages: dict[str, Any] = {
+            "Count": uploaders.SMUGMUG_PAGE,
+            "NextPage": "next" if more else None,
+        }
+        if self.total:
+            pages["Total"] = (len(self.pages) - 1) * uploaders.SMUGMUG_PAGE + 1
         body = {"Response": {"Album": self.pages[index], "Pages": pages}}
         return FakeResponse(self.status, body)
 
@@ -242,12 +249,16 @@ def gallery(key: str, name: str, date: str, folder: str = "Events") -> dict[str,
     }
 
 
-def test_fr39_smugmug_lists_every_page_newest_first(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("total", [True, False], ids=["all-at-once", "page-by-page"])
+def test_fr39_smugmug_lists_every_page_newest_first(
+    monkeypatch: pytest.MonkeyPatch, total: bool
+) -> None:
     session = ListingSession(
         [
             [gallery("A1", "Old Gala", "2025-01-01T00:00:00+00:00")],
             [gallery("B2", "Smith Wedding", "2026-10-01T00:00:00+00:00", "Weddings")],
-        ]
+        ],
+        total=total,
     )
     uploader = SmugMugUploader()
     monkeypatch.setattr(uploader, "_session", lambda: session)

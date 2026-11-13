@@ -113,11 +113,12 @@ def test_fr39_pick_smugmug_gallery_from_list(
     assert (saved.album, saved.album_name) == ("/api/v2/album/B2", "Smith Wedding")
     assert window.event_card.summary.text() == "SmugMug · Smith Wedding"
 
-    # Reopened while the list is unavailable: the saved gallery is kept as it is.
+    # Reopened, then reloaded while the list is unavailable: the saved gallery is kept.
     fake_uploader.list_error = UploadError("SmugMug is not connected. Connect it in Settings.")
     again = EventEditor(bridge, bridge.active(), window)
     qtbot.addWidget(again)
     again.show()
+    qtbot.mouseClick(again.album_picker.reload, Qt.MouseButton.LeftButton)
     qtbot.waitUntil(lambda: again.album_hint.text().startswith("SmugMug is not"), timeout=3000)
     assert again.album.text() == "Smith Wedding" and again.save.isEnabled()
     assert (again.current().album, again.current().album_name) == (
@@ -576,3 +577,24 @@ def test_fr28_delete_preset_takes_two_clicks(qtbot, window, bridge, store, event
     assert store.presets() == [] and editor.preset.count() == 1
     assert editor.preset_action.text() == "Save as preset…"
     shoot(editor, "event-editor-export")
+
+
+def test_fr39_gallery_list_is_kept_until_reload(
+    qtbot, window, bridge, store, event, fake_uploader
+) -> None:  # type: ignore[no-untyped-def]
+    fake_uploader.albums = [uploaders.AlbumChoice("/api/v2/album/A1", "Old Gala", "NA1")]
+    event.destination = "smugmug"
+    bridge.save_event(event)
+    first = EventEditor(bridge, bridge.active(), window)
+    qtbot.addWidget(first)
+    qtbot.waitUntil(lambda: first.gallery.count() == 1, timeout=3000)
+    fake_uploader.albums = [
+        uploaders.AlbumChoice("/api/v2/album/B2", "Smith Wedding", "NB2"),
+        *fake_uploader.albums,
+    ]
+    again = EventEditor(bridge, bridge.active(), window)  # reopened: no new fetch
+    qtbot.addWidget(again)
+    qtbot.waitUntil(lambda: again.gallery.count() == 1, timeout=3000)
+    qtbot.mouseClick(again.album_picker.reload, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: again.gallery.count() == 2, timeout=3000)
+    assert again.gallery.itemText(0) == "Smith Wedding"

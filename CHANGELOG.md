@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.5 — 2026-11-13
+
+- Fixed: the gallery list could stay on "Loading" for minutes on accounts with many
+  galleries. WeFlow now fetches it much faster.
+- The gallery list is loaded once per session. Press the reload button next to it to
+  see galleries you made on the SmugMug website since.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.6.4 — 2026-11-13
 
 - Fixed: pressing **Connect** could say the keychain was not available. If your Mac

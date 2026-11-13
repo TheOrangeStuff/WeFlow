@@ -87,7 +87,7 @@ class AlbumPicker(QWidget):
         self.album.setText(album_name or album)
         self.album.textChanged.connect(self._on_text)
         self.reload = Button("", "quiet", icon="refresh-cw", icon_token="text-2")
-        self.reload.clicked.connect(self.load)
+        self.reload.clicked.connect(lambda: self.load(refresh=True))
         self.new = Button("", "quiet", icon="plus", icon_token="text-2")
         self.new.clicked.connect(self.open_new)
 
@@ -196,8 +196,9 @@ class AlbumPicker(QWidget):
         self.hint.setVisible(bool(text))
 
     # ----------------------------------------------------------------- list
-    def load(self) -> None:
-        """Ask the service for the user's galleries, off the UI thread."""
+    def load(self, refresh: bool = False) -> None:
+        """Ask the service for the user's galleries, off the UI thread. A list
+        fetched earlier this session is reused unless ``refresh`` (Reload) is set."""
         destination = self._destination
         self._token += 1
         token = self._token
@@ -205,7 +206,9 @@ class AlbumPicker(QWidget):
             return
         self._show_hint(f"Loading your {album_word(destination)}…")
         self.reload.setEnabled(False)
-        self.bridge.list_albums(destination, lambda result: self._on_list(token, result))
+        self.bridge.list_albums(
+            destination, lambda result: self._on_list(token, result), refresh=refresh
+        )
 
     def _on_list(self, token: int, result: object) -> None:
         if token != self._token:
