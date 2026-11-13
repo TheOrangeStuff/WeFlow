@@ -215,12 +215,15 @@ def test_pause_stops_card_watching(qtbot, window, bridge, tmp_path) -> None:  # 
     bridge.start()
     qtbot.mouseClick(window.pause, Qt.MouseButton.LeftButton)
     assert bridge.settings.paused and window.pause.text() == "Resume"
+    assert window.pause.toolTip() == "Start watching for new cards again."
     assert window.panel.state == "paused" and window.panel.visible_buttons() == ["Resume"]
     insert_card(tmp_path)
     qtbot.wait(300)
     assert not window.notice_bar.isVisible()
     qtbot.mouseClick(window.panel.resume, Qt.MouseButton.LeftButton)
     assert not bridge.settings.paused and window.pause.text() == "Pause"
+    assert "keep processing and uploading" in window.pause.toolTip()
+    assert "Paced asks" in window.mode.toolTip()  # covers the words, not just the switch
     qtbot.waitUntil(lambda: window.notice_bar.isVisible(), timeout=3000)  # card already in
 
 

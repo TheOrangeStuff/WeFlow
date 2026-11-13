@@ -56,6 +56,7 @@ class EventCard(QFrame):
             "Switch", "text", icon="chevron-down", icon_token="accent", icon_after=True
         )
         self.switch.setAccessibleName("Switch event")
+        self.switch.setToolTip("Choose which event new cards go into, or make a new one.")
         self.switch.clicked.connect(self.open_switcher)
         self.menu = QMenu(self)
 

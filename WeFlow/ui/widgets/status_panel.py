@@ -159,6 +159,16 @@ class StatusPanel(QFrame):
         self.retry = Button("Retry", "primary")
         self.details = Button("Details", "outline")
         self.resume = Button("Resume", "outline", icon="play")
+        for button, tip in (
+            (self.eject, "Eject the card so you can take it out."),
+            (self.open_folder, "Show this event's photos on your computer."),
+            (self.release, "Send the waiting photos now."),
+            (self.process, "Auto-tune the copied photos now."),
+            (self.retry, "Try the photos that failed again."),
+            (self.details, "See what happened, photo by photo."),
+            (self.resume, "Start watching for new cards again."),
+        ):
+            button.setToolTip(tip)
         self.eject.clicked.connect(self.eject_clicked)
         self.open_folder.clicked.connect(self.open_folder_clicked)
         self.release.clicked.connect(self.release_clicked)

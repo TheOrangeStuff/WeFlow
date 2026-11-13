@@ -192,7 +192,8 @@ class ModeSwitch(QWidget):
         super().__init__()
         self.switch = Toggle(paced)
         self.switch.setAccessibleName("Paced mode")
-        self.switch.setToolTip(
+        # On the whole widget, so hovering "Auto" or "Paced" shows it too.
+        self.setToolTip(
             "Auto runs every step on its own. Paced asks before processing and before uploading."
         )
         self.auto_word = label("Auto", "secondary")

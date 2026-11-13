@@ -35,6 +35,12 @@ DONE_FADE_MS = 10_000
 NOTICE_MS = 5_000
 
 
+PAUSE_TIPS = {
+    False: "Stop watching for new cards. Photos already copied keep processing and uploading.",
+    True: "Start watching for new cards again.",
+}
+
+
 class MainWindow(QMainWindow):
     notify = Signal(str, str, str)  # kind, title, message  (for the tray)
     status_changed = Signal(str)  # idle | working | safe | attention
@@ -126,6 +132,7 @@ class MainWindow(QMainWindow):
         self.activity = Button(
             "Activity", "quiet", icon="chevron-right", icon_token="text-2", icon_after=True
         )
+        self.activity.setToolTip("Show what WeFlow has done this session.")
         self.activity.clicked.connect(lambda: self.drawer.toggle())
         bottom = QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
@@ -208,6 +215,7 @@ class MainWindow(QMainWindow):
         self._sync_rows([b for b in visible if current is None or b.id != current.id])
         self.mode.set_paced(self.bridge.settings.paced)
         self.pause.setText("Resume" if paused else "Pause")
+        self.pause.setToolTip(PAUSE_TIPS[paused])
         self.pause.set_icon("play" if paused else "pause")
         self.activity.setVisible(bool(self.drawer.entries))
 

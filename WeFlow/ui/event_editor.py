@@ -114,8 +114,9 @@ def error_label() -> QLabel:
     return text
 
 
-def toggle_row(caption: str, toggle: Toggle) -> QWidget:
+def toggle_row(caption: str, toggle: Toggle, tip: str = "") -> QWidget:
     box = QWidget()
+    box.setToolTip(tip)  # shown over the caption and the toggle
     row = QHBoxLayout(box)
     row.setContentsMargins(0, 0, 0, 0)
     row.addWidget(label(caption, "body"), 1)
@@ -359,9 +360,17 @@ class EventEditor(QDialog):
         self.keywords.setPlaceholderText("wedding, smith, 2026")
         self.keywords_field = field("Keywords", self.keywords)
         self.hold = Toggle(event.hold_uploads)
-        self.hold_row = toggle_row("Hold uploads for review", self.hold)
+        self.hold_row = toggle_row(
+            "Hold uploads for review",
+            self.hold,
+            "Processed photos wait until you press Upload.",
+        )
         self.keep = Toggle(event.keep_processed)
-        self.keep_row = toggle_row("Keep processed copies after upload", self.keep)
+        self.keep_row = toggle_row(
+            "Keep processed copies after upload",
+            self.keep,
+            "Off: edited copies are deleted once uploaded. Your originals are always kept.",
+        )
 
         self.auto_wb = Toggle(event.auto_wb)
         self.wb_strength = SliderRow("Strength", 0, 100, round(event.wb_strength * 100))
