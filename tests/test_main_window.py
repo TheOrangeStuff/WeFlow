@@ -191,7 +191,8 @@ def test_fr35_attention_panel_retry_and_details(  # type: ignore[no-untyped-def]
     window.import_folder(str(folder))
     qtbot.waitUntil(lambda: window.panel.state == "attention", timeout=10000)
     assert window.panel.subline.text() == "4 photos failed. Fake upload failure."
-    assert window.status() == "attention" and "attention" in notes
+    qtbot.waitUntil(lambda: "attention" in notes, timeout=3000)  # may land a moment later
+    assert window.status() == "attention"
     assert window.drawer.entries[0][1] == "error"  # also in the log, never only there
     qtbot.mouseClick(window.panel.details, Qt.MouseButton.LeftButton)
     assert window.drawer.is_open()
