@@ -347,3 +347,34 @@ def test_whats_new_stays_quiet(qtbot, app, bridge, store, monkeypatch, case: str
     qtbot.wait(100)
     assert app.shown == []
     assert store.settings.seen_version == __version__
+
+
+def test_update_check_now_button_in_settings(  # type: ignore[no-untyped-def]
+    qtbot, window, bridge, store, monkeypatch
+) -> None:
+    from WeFlow import __version__
+
+    store.update_settings(check_updates=False)  # works even with the daily check off
+    dialog = SettingsDialog(bridge, window)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    assert dialog.check_now.isVisible() and dialog.check_now.text() == "Check for updates"
+
+    publish(monkeypatch, f"v{__version__}")
+    dialog.check_now.click()
+    qtbot.waitUntil(lambda: dialog.check_now.text() == "Up to date", timeout=3000)
+
+    def offline() -> str:
+        raise OSError("no network")
+
+    monkeypatch.setattr(updates, "fetch_latest_tag", offline)
+    dialog.check_now.click()
+    qtbot.waitUntil(lambda: dialog.check_now.text().startswith("Can't check"), timeout=3000)
+    from tests.test_dialogs import shoot
+
+    shoot(dialog, "settings-check-failed-light")
+
+    publish(monkeypatch, "v9.0.0")
+    dialog.check_now.click()
+    qtbot.waitUntil(lambda: dialog.update_link.isVisible(), timeout=3000)
+    assert dialog.update_link.text() == "Download 9.0.0" and not dialog.check_now.isVisible()

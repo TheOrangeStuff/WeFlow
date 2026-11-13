@@ -247,6 +247,8 @@ class SettingsDialog(QDialog):
         self.updates = Toggle(bridge.settings.check_updates)
         self.updates.setAccessibleName("Check for new versions")
         self.updates.toggled.connect(bridge.set_check_updates)
+        self.check_now = Button("Check for updates", "text")
+        self.check_now.clicked.connect(self._check_now)
         self.update_link = Button("", "link")
         self.update_link.clicked.connect(bridge.open_update_page)
         self.copy_log = Button("Copy log", icon="copy")
@@ -295,6 +297,7 @@ class SettingsDialog(QDialog):
         footer = QHBoxLayout()
         footer.setSpacing(8)
         footer.addWidget(label(f"WeFlow {__version__}", "label"))
+        footer.addWidget(self.check_now)
         footer.addWidget(self.update_link)
         footer.addStretch(1)
         footer.addWidget(self.done_button)
@@ -317,7 +320,24 @@ class SettingsDialog(QDialog):
             self.copy_log.setText("Copied")
         QTimer.singleShot(2000, self.copy_log, lambda: self.copy_log.setText("Copy log"))
 
+    def _check_now(self) -> None:
+        self.check_now.setEnabled(False)
+        self.check_now.setText("Checking…")
+        self.bridge.check_for_updates_now(self._on_checked)
+
+    def _on_checked(self, outcome: str) -> None:
+        self.check_now.setEnabled(True)
+        if outcome == "update":
+            self.check_now.setText("Check for updates")
+            self._show_update()
+            return
+        self.check_now.setText(
+            "Up to date" if outcome == "current" else "Can't check right now. Try again later."
+        )
+        QTimer.singleShot(4000, self.check_now, lambda: self.check_now.setText("Check for updates"))
+
     def _show_update(self) -> None:
         update = self.bridge.update
+        self.check_now.setVisible(update is None)
         self.update_link.setText(f"Download {update.version}" if update else "")
         self.update_link.setVisible(update is not None)

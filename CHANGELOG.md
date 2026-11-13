@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.2 — 2026-11-13
+
+- New **Check for updates** button at the bottom of Settings. It tells you if you're up
+  to date, or offers the new version to download.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.6.1 — 2026-11-13
 
 - The gallery list shows your 20 newest galleries. Pick **More galleries…** at the bottom

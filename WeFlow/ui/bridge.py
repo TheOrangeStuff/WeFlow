@@ -353,6 +353,32 @@ class Bridge(QObject):
 
         self.run(lambda: updates.check(__version__), done)
 
+    def check_for_updates_now(self, done: Callable[[str], None]) -> None:
+        """ "Check for updates" in Settings. Works even with the daily check off.
+
+        ``done`` gets "update" (and ``self.update`` is set), "current" or "failed".
+        """
+
+        def finished(result: Any) -> None:
+            if isinstance(result, Update):
+                if result != self.update:
+                    self.update = result
+                    self.update_changed.emit()
+                done("update")
+            elif result is None:
+                done("current")
+            else:
+                log.info("update check failed: %s", type(result).__name__)
+                done("failed")
+
+        def job() -> Update | Exception | None:
+            try:
+                return updates.latest(__version__)
+            except (OSError, ValueError) as exc:
+                return exc  # a failed check is an answer here, not a crash
+
+        self.run(job, finished)
+
     def set_check_updates(self, enabled: bool) -> None:
         self.update_settings(check_updates=enabled)
         if enabled:

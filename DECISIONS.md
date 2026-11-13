@@ -267,6 +267,13 @@ owner and accepted on 2026-11-11.
     the fetch faster, each page asks for 5 fields (`_filter`), and reads may take
     45 s, up from 15 s. **(owner's request: about 20, then more)**
 
+## 1.6.2 — check for updates on demand
+
+77. **"Check for updates" sits in the Settings footer, next to the version.** It works even
+    with the daily check off, because pressing it is an explicit request. It says "Up to
+    date" or "Can't check right now", unlike the silent daily check (#36). A new version
+    shows as the existing "Download x.y.z" link, which replaces the button.
+
 ## Not verified yet
 
 These need hardware, accounts or other operating systems (see `docs/manual-test.md`):

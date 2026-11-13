@@ -70,19 +70,28 @@ def fetch_latest_tag() -> str:
     return tag if isinstance(tag, str) else ""
 
 
+def latest(current: str, fetch: Callable[[], str] | None = None) -> Update | None:
+    """Return the newer version, or None when up to date.
+
+    Raises ``OSError`` or ``ValueError`` when the check itself fails (offline,
+    timeout, rate limit, bad JSON), so "Check for updates" can say so.
+    """
+    tag = (fetch or fetch_latest_tag)()
+    if not is_newer(tag, current):
+        return None
+    return Update(tag.strip().removeprefix("v"))
+
+
 def check(current: str, fetch: Callable[[], str] | None = None) -> Update | None:
     """Return the newer version, or None when up to date, offline or unsure.
 
     Never raises: a failed check is logged and treated as "nothing new".
     """
     try:
-        tag = (fetch or fetch_latest_tag)()
+        return latest(current, fetch)
     except (OSError, ValueError) as exc:  # offline, timeout, rate limit, bad JSON
         log.info("update check failed: %s", type(exc).__name__)
         return None
-    if not is_newer(tag, current):
-        return None
-    return Update(tag.strip().removeprefix("v"))
 
 
 _HEADING = re.compile(r"##\s+v?(\d+(?:\.\d+)*)")
