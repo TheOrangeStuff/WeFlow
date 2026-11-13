@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0 — 2026-11-13
+
+- Your originals are now the copy you keep. Once a photo is uploaded and in its album,
+  WeFlow deletes the edited copy, so you no longer have two sets of every photo.
+- Want the edited copies too? Turn on **Keep processed copies after upload** in the
+  event. They then go into the event's processed folder, as before.
+- Photos waiting to upload are kept out of sight until they are up.
+- Edited copies you already have stay where they are. Your events, settings and
+  sign-ins carry over unchanged.
+
 ## 1.4.0 — 2026-11-11
 
 - Pick your gallery from a list. In an event, the SmugMug gallery (or Flickr album) box

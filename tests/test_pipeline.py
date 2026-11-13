@@ -44,12 +44,13 @@ def test_card_goes_copying_safe_processing_uploading_done(
     assert states.index("safe") < states.index("done")
     assert (done.total, done.copied, done.skipped) == (8, NEW_PHOTOS, 1)  # FR-14
     assert (done.processed, done.uploaded, done.failed) == (NEW_PHOTOS, NEW_PHOTOS, 0)
-    assert sorted(fake.uploads) == sorted(
-        p.name for p in (store.event_root(event) / "processed").iterdir()
-    )
+    assert len(set(fake.uploads)) == NEW_PHOTOS
     assert len(fake.album_adds) == NEW_PHOTOS
     assert [n.level for n in recorder.notices("safe")] == ["safe"]
     root = store.event_root(event)
+    # 1.5.0: processed copies are deleted once uploaded; only originals remain.
+    assert not (root / "processed").exists()
+    assert not list((root / ".WeFlow" / "work").glob("*.jpg"))
     assert len(list((root / "originals").iterdir())) == NEW_PHOTOS
     assert all(p.name.startswith("Gala_2026") for p in (root / "originals").iterdir())
 
@@ -287,7 +288,7 @@ def test_fr36_kill_and_restart_mid_run_uploads_each_photo_once(
     store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory, tmp_path: Path
 ) -> None:
     """Freeze the library as it is on disk mid-upload (a hard kill), then relaunch."""
-    event = flickr_event(store)
+    event = flickr_event(store, keep_processed=True)
     gate = threading.Event()
 
     class Stalls(FakeUploader):
@@ -473,7 +474,9 @@ def test_nfr06_keychain_failure_is_plain_and_permanent(
 def test_fr26_processed_copies_and_uploads_use_the_naming_rule(
     store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
 ) -> None:
-    event = flickr_event(store, file_naming="custom_seq", custom_name="Smith Wedding")
+    event = flickr_event(
+        store, file_naming="custom_seq", custom_name="Smith Wedding", keep_processed=True
+    )
     fake = FakeUploader()
     pipeline = make_pipeline(fake)
     batch = pipeline.submit(card, event, "CARD_A", is_card=True)
@@ -509,7 +512,7 @@ def test_fr26_name_is_fixed_once_processed(
 def test_fr26_custom_name_collisions_and_old_photos(
     store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
 ) -> None:
-    event = flickr_event(store, file_naming="custom", custom_name="Gala")
+    event = flickr_event(store, file_naming="custom", custom_name="Gala", keep_processed=True)
     fake = FakeUploader()
     pipeline = make_pipeline(fake)
     batch = pipeline.submit(card, event, "CARD_A", is_card=True)
@@ -539,3 +542,50 @@ def test_fr26_photos_imported_before_keep_working(
     recorder.wait_state(1, "done")
     assert fake.uploads == ["DSC_0007.jpg"]
     assert photos(store, event).photos[name].seq == 1
+
+
+def test_keep_processed_moves_uploaded_copies_into_processed(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    event = flickr_event(store, keep_processed=True)
+    fake = FakeUploader()
+    batch = make_pipeline(fake).submit(card, event, "CARD_A", is_card=True)
+    recorder.wait_state(batch.id, "done")
+    root = store.event_root(event)
+    assert sorted(fake.uploads) == sorted(p.name for p in (root / "processed").iterdir())
+    assert not list((root / ".WeFlow" / "work").glob("*.jpg"))
+
+
+def test_pre_150_processed_copy_uploads_and_is_left_alone(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    """A photo processed by an older version sits in processed/; it still uploads, and
+    files already in processed/ are never deleted."""
+    event = flickr_event(store, hold_uploads=True)
+    pipeline = make_pipeline(FakeUploader())
+    batch = pipeline.submit(card, event, "CARD_A", is_card=True)
+    recorder.wait_state(batch.id, "held")
+    root = store.event_root(event)
+    (root / "processed").mkdir()
+    for f in (root / ".WeFlow" / "work").glob("*.jpg"):
+        f.rename(root / "processed" / f.name)
+    pipeline.release_held(event.id)
+    recorder.wait(lambda: recorder.batches(batch.id)[-1].state == "done")
+    assert len(list((root / "processed").glob("*.jpg"))) == NEW_PHOTOS
+
+
+def test_missing_processed_copy_is_made_again_before_upload(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    event = flickr_event(store, hold_uploads=True)
+    fake = FakeUploader()
+    pipeline = make_pipeline(fake)
+    batch = pipeline.submit(card, event, "CARD_A", is_card=True)
+    recorder.wait_state(batch.id, "held")
+    for f in (store.event_root(event) / ".WeFlow" / "work").glob("*.jpg"):
+        f.unlink()
+    event.hold_uploads = False
+    store.update_event(event)
+    pipeline.release_held(event.id)
+    recorder.wait(lambda: recorder.batches(batch.id)[-1].state == "done")
+    assert len(set(fake.uploads)) == NEW_PHOTOS

@@ -222,7 +222,7 @@ class Pipeline:
                 stage = photo.failed_stage
                 if stage != "process" and not photo.remote_id:
                     # Nothing uploaded yet; redo processing if its output is gone.
-                    if not (state.processed / photo.processed_name).is_file():
+                    if not state.processed_file(photo).is_file():
                         stage = "process"
                 photo.attempts, photo.error, photo.failed_stage = 0, "", ""
                 photo.held = False
@@ -240,7 +240,7 @@ class Pipeline:
             if not (root / ".WeFlow").is_dir():
                 continue
             state = self._state_for(event)
-            for folder in (state.originals, state.processed):
+            for folder in (state.originals, state.processed, state.work):
                 for leftover in folder.glob(".tmp-*"):
                     with contextlib.suppress(OSError):
                         leftover.unlink()
@@ -521,10 +521,13 @@ class Pipeline:
         if photo.status != "copied":
             return
         self._name_output(event, state, photo)
+        # Copies that will be uploaded wait in the hidden work folder; local-only ones
+        # are the finished result and go straight to processed/.
+        folder = state.processed if batch.destination == "none" else state.work
         try:
             imaging.process_file(
                 state.originals / photo.name,
-                state.processed / photo.processed_name,
+                folder / photo.processed_name,
                 event,
                 self._budget.reserve,
             )
@@ -591,10 +594,18 @@ class Pipeline:
         if photo.status != "processed" or photo.held:
             return None
         stage = "album" if photo.remote_id else "upload"
+        source = state.processed_file(photo)
+        if not photo.remote_id and not source.is_file():
+            # The processed copy went missing before upload: make it again from the original.
+            photo.status = "copied"
+            state.put_photo(photo)
+            self._enqueue("process", task[0], photo.name)
+            self._touch(batch.id)
+            return None
         try:
             uploader = self._uploader(batch.destination)
             if not photo.remote_id:  # FR-32: a stored remote_id is never uploaded again
-                photo.remote_id = uploader.upload(state.processed / photo.processed_name, event)
+                photo.remote_id = uploader.upload(source, event)
                 state.put_photo(photo)
                 stage = "album"
             uploader.add_to_album(photo.remote_id, event)
@@ -620,12 +631,32 @@ class Pipeline:
                 self._emit(Notice("info", f"{batch.label}: {exc.message}", batch.id))
             self._touch(batch.id)
             return self._retry_delay(photo.attempts)
+        # Before marking it uploaded: a kill in between only repeats the album step,
+        # which needs no file.
+        self._settle_output(event, state, photo)
         photo.status, photo.attempts, photo.error = "uploaded", 0, ""
         state.put_photo(photo)
         with self._lock:
             self._waiting.pop(batch.id, None)
         self._touch(batch.id)
         return None
+
+    @staticmethod
+    def _settle_output(event: Profile, state: EventState, photo: PhotoRecord) -> None:
+        """Once a photo is up and in its album, move its processed copy into processed/
+        if the event keeps them, otherwise delete it. Only the work folder is touched:
+        files already in processed/ (from before 1.5.0) stay where they are."""
+        work = state.work / photo.processed_name
+        try:
+            if not work.exists():
+                return
+            if event.keep_processed:
+                state.processed.mkdir(parents=True, exist_ok=True)
+                os.replace(work, state.processed / photo.processed_name)
+            else:
+                work.unlink()
+        except OSError:
+            log.warning("could not tidy the processed copy of %s", photo.name, exc_info=True)
 
 
 def plural(count: int, word: str = "photo") -> str:

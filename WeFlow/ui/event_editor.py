@@ -360,6 +360,8 @@ class EventEditor(QDialog):
         self.keywords_field = field("Keywords", self.keywords)
         self.hold = Toggle(event.hold_uploads)
         self.hold_row = toggle_row("Hold uploads for review", self.hold)
+        self.keep = Toggle(event.keep_processed)
+        self.keep_row = toggle_row("Keep processed copies after upload", self.keep)
 
         self.auto_wb = Toggle(event.auto_wb)
         self.wb_strength = SliderRow("Strength", 0, 100, round(event.wb_strength * 100))
@@ -419,6 +421,7 @@ class EventEditor(QDialog):
         left.addWidget(self.privacy_field)
         left.addWidget(self.keywords_field)
         left.addWidget(self.hold_row)
+        left.addWidget(self.keep_row)
         left.addSpacing(4)
         left.addWidget(label("Look", "heading"))
         left.addWidget(toggle_row("Auto white balance", self.auto_wb))
@@ -559,7 +562,14 @@ class EventEditor(QDialog):
         for combo in (self.destination, self.privacy, self.naming):
             combo.currentIndexChanged.connect(self._changed)
         self.destination.currentIndexChanged.connect(self._destination_changed)
-        for toggle in (self.hold, self.auto_wb, self.auto_tone, self.watermark, self.limit_size):
+        for toggle in (
+            self.hold,
+            self.keep,
+            self.auto_wb,
+            self.auto_tone,
+            self.watermark,
+            self.limit_size,
+        ):
             toggle.toggled.connect(self._changed)
         for slider in (self.wb_strength, self.size, self.opacity, self.margin, self.quality):
             slider.changed.connect(self._changed)
@@ -590,6 +600,7 @@ class EventEditor(QDialog):
             flickr_privacy=self.privacy.currentData(),
             keywords=self.keywords.text().strip(),
             hold_uploads=self.hold.isChecked(),
+            keep_processed=self.keep.isChecked(),
             auto_wb=self.auto_wb.isChecked(),
             wb_strength=self.wb_strength.value() / 100,
             auto_tone=self.auto_tone.isChecked(),
@@ -688,7 +699,7 @@ class EventEditor(QDialog):
     def _changed(self) -> None:
         event = self.current()
         uploads = event.destination != "none"
-        for widget in (self.album_field, self.keywords_field, self.hold_row):
+        for widget in (self.album_field, self.keywords_field, self.hold_row, self.keep_row):
             widget.setVisible(uploads)
         self.privacy_field.setVisible(event.destination == "flickr")
         if self._album_caption is not None:

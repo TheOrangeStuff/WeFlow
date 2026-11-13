@@ -128,6 +128,7 @@ class Profile:
     max_long_edge: int = 0
     jpeg_quality: int = 92
     hold_uploads: bool = False
+    keep_processed: bool = False  # 1.5.0: keep processed copies after upload
     file_naming: str = "import"
     custom_name: str = ""  # empty: use the event name
     start_number: int = 1

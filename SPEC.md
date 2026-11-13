@@ -97,6 +97,7 @@ Fields carry over from v0.1 `Profile`, with these changes:
 | `max_long_edge` | int | 0 | 0 = full size |
 | `jpeg_quality` | int 0–100 | 92 | Lightroom's range (1.2.0; was 60–100) |
 | `hold_uploads` | bool | false | |
+| `keep_processed` | bool | false | *(1.5.0)* Keep processed copies after upload (FR-40) |
 | `file_naming` | `"import" \| "custom_seq" \| "custom" \| "date_filename" \| "filename" \| "filename_seq"` | `"import"` | FR-26 (1.2.0) |
 | `custom_name` | str | `""` | Empty = event name |
 | `start_number` | int ≥ 0 | 1 | First sequence number |
@@ -119,8 +120,9 @@ From 1.2.0 also `original` (card file name, no extension), `seq` (1-based import
 - Library on disk:
   ```
   <Library>/<event.folder>/originals/
-  <Library>/<event.folder>/processed/
+  <Library>/<event.folder>/processed/           # local-only events, kept copies (FR-40)
   <Library>/<event.folder>/.WeFlow/state.json
+  <Library>/<event.folder>/.WeFlow/work/        # 1.5.0: processed copies waiting to upload
   ```
 
 ---
@@ -188,6 +190,11 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
   - Flickr: `photosets.getList`, newest first by `date_create`; picking stores the title in `album`, as typing does.
   - The list loads off the UI thread. If it can't load (not signed in, offline), say why under the field and keep what is saved.
   - Creating a SmugMug gallery from WeFlow is out of scope for now.
+- **FR-40** *(1.5.0)* Originals are the lasting copy. For events that upload, processed copies are written to the hidden `.WeFlow/work/` folder.
+  - Once a photo is uploaded **and** added to its album, its processed copy is deleted, or moved into `processed/` when the event's "Keep processed copies after upload" is on (off by default).
+  - Held, waiting and failed photos keep their processed copy until they are up. If it goes missing before upload, it is made again from the original.
+  - Local-only events (destination none) still write straight to `processed/`.
+  - Files already in `processed/` from earlier versions are never deleted.
 
 ### 5.5 Pipeline mode *(1.3.0)*
 - **FR-38** An app-wide **Auto / Paced** switch (`Settings.paced`, default Auto).

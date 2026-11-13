@@ -301,7 +301,10 @@ class Bridge(QObject):
         event = self.store.get(event_id)
         if event is None:
             return str(self.store.library)
-        return str(self.store.event_root(event) / ("processed" if processed else "originals"))
+        # Uploaded copies are deleted unless the event keeps them (1.5.0).
+        keeps = event.destination == "none" or event.keep_processed
+        folder = "processed" if processed and keeps else "originals"
+        return str(self.store.event_root(event) / folder)
 
     def open_folder(self, path: str) -> None:
         """Show a folder in Finder / Explorer (creating it first if needed)."""

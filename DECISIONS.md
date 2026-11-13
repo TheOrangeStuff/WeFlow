@@ -219,6 +219,25 @@ owner and accepted on 2026-11-11.
 61. **Creating a SmugMug gallery from WeFlow is deferred** to a later version, at the
     owner's request. **(owner's choice)**
 
+## 1.5.0 — originals are the lasting copy (FR-40)
+
+62. **Processed copies wait in `<event>/.WeFlow/work/`**, not in app data. It sits on the
+    same drive as the event, so keeping a copy is a plain move, and it goes wherever the
+    event folder goes. The library then shows originals only. **(owner's choice)**
+63. **Delete only after the album step succeeds**, not right after upload. An album
+    failure keeps the file until retry gets it in. The file is tidied before the photo
+    is marked uploaded, so a kill in between only repeats the album step, which needs
+    no file. **(owner's choice)**
+64. **"Keep processed copies after upload" is an event toggle, off by default.** On, the
+    copy moves into `processed/` instead of being deleted. **(owner's choice)**
+65. **Existing files are left alone.** Processed copies already in `processed/` from
+    earlier versions are never deleted, even when those photos upload after the
+    update. **(owner's choice)**
+66. **A missing processed copy is remade before upload**, rather than failing, since the
+    original is always there.
+67. **"Open folder" opens `originals/`** for upload events that don't keep processed
+    copies, since `processed/` will be empty.
+
 ## Not verified yet
 
 These need hardware, accounts or other operating systems (see `docs/manual-test.md`):

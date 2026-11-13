@@ -115,6 +115,18 @@ class EventState:
     def processed(self) -> Path:
         return self.root / "processed"
 
+    @property
+    def work(self) -> Path:
+        """Processed copies waiting to upload (1.5.0). Hidden, so the library shows only
+        originals, plus processed copies the user chose to keep."""
+        return self.dir / "work"
+
+    def processed_file(self, photo: PhotoRecord) -> Path:
+        """Where the photo's processed copy is: the work folder, or ``processed/``
+        (local-only events, kept copies, and photos processed before 1.5.0)."""
+        work = self.work / photo.processed_name
+        return work if work.exists() else self.processed / photo.processed_name
+
     # ----------------------------------------------------------------- load
     def _load(self) -> None:
         try:
@@ -173,7 +185,11 @@ class EventState:
     def output_taken(self, name: str) -> bool:
         """True when another photo's processed copy already uses ``name``."""
         with self.lock:
-            return name.casefold() in self._outputs or (self.processed / name).exists()
+            return (
+                name.casefold() in self._outputs
+                or (self.processed / name).exists()
+                or (self.work / name).exists()
+            )
 
     def put_photo(self, photo: PhotoRecord) -> None:
         with self.lock:
