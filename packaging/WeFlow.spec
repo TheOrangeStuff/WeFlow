@@ -4,7 +4,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(SPECPATH).parent
-VERSION = "1.1.0"
+VERSION = next(
+    line.split('"')[1]
+    for line in (ROOT / "WeFlow" / "__init__.py").read_text().splitlines()
+    if line.startswith("__version__")
+)
 
 a = Analysis(
     [str(ROOT / "packaging" / "entry.py")],

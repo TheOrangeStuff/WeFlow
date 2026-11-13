@@ -26,7 +26,11 @@ if [[ -n "${MACOS_SIGN_IDENTITY:-}" ]]; then
     --sign "${MACOS_SIGN_IDENTITY}" dist/WeFlow.app
   codesign --verify --deep --strict dist/WeFlow.app
 else
-  echo "MACOS_SIGN_IDENTITY not set: leaving the app unsigned"
+  # Ad-hoc sign the whole bundle so its signature is valid and sealed. Without this,
+  # macOS cannot remember "Always Allow" for the keychain and asks on every launch.
+  echo "MACOS_SIGN_IDENTITY not set: ad-hoc signing (Gatekeeper will still warn)"
+  codesign --force --deep --sign - dist/WeFlow.app
+  codesign --verify --deep --strict dist/WeFlow.app
 fi
 
 STAGE="$(mktemp -d)"

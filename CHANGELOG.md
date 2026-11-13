@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.3 — 2026-11-13
+
+- On Mac, WeFlow no longer keeps asking to use your keychain. The first time you open
+  this version it may ask a few more times, once per saved item. Enter your password
+  and press **Always Allow**.
+- After that, WeFlow asks at most once when you install a new version.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.6.2 — 2026-11-13
 
 - New **Check for updates** button at the bottom of Settings. It tells you if you're up

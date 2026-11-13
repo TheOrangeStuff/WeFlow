@@ -280,3 +280,13 @@ These need hardware, accounts or other operating systems (see `docs/manual-test.
 real cards on macOS and Windows; eject; real SmugMug and Flickr uploads and connect
 flows, including creating a SmugMug gallery (FR-41); tray icon and notifications; installers, signing and notarisation; start at
 login; NFR-03 and NFR-08 with real 24 MP and 45 MP files.
+
+## 1.6.3 — one keychain entry for all secrets
+
+Unsigned macOS builds change code identity every release, and each of the eight keychain
+entries asked for permission on its own; "Always Allow" often did not stick. Secrets now
+live in one entry (`credentials`, JSON) read once per run and cached in memory. The first
+run of each version rewrites it, which makes that build the entry's creator so later runs
+do not ask. The eight old entries are read once to migrate and left in place, so an
+older version still finds its sign-in. The unsigned build is now ad-hoc signed as a whole
+bundle so its signature is valid.

@@ -4,6 +4,8 @@ import json
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from WeFlow.core import secrets
 from WeFlow.core.config import Profile, Store, default_event_name, slugify
 
@@ -115,7 +117,8 @@ KEYCHAIN_NAMES_1_0 = {
 def test_update_keychain_names_are_frozen() -> None:
     """Renaming any of these signs every user out on update. Migrate instead."""
     assert secrets.SERVICE == "WeFlow"
-    names = {v for k, v in vars(secrets).items() if k.isupper() and k != "SERVICE"}
+    skip = {"SERVICE", "BUNDLE_ENTRY"}
+    names = {v for k, v in vars(secrets).items() if k.isupper() and k[0] != "_" and k not in skip}
     assert names == KEYCHAIN_NAMES_1_0
 
 
@@ -197,3 +200,37 @@ def test_fr28_update_reads_older_events_and_presets_files(store: Store) -> None:
     assert event is not None and event.jpeg_quality == 88
     assert (event.file_naming, event.limit_file_size, event.start_number) == ("import", False, 1)
     assert [p.name for p in store.presets()] == ["Web"]
+
+
+def test_nfr06_keychain_one_entry_carries_old_sign_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    """1.6.3: the eight old entries move into one, read once per run (fewer macOS prompts)."""
+    import keyring
+
+    store: dict[str, str] = {secrets.SMUGMUG_API_KEY: "KEY", secrets.FLICKR_TOKEN: "TOK"}
+    reads: list[str] = []
+
+    def get(service: str, name: str) -> str | None:
+        reads.append(name)
+        return store.get(name)
+
+    def put(service: str, name: str, value: str) -> None:
+        store[name] = value
+
+    monkeypatch.setattr(keyring, "get_password", get)
+    monkeypatch.setattr(keyring, "set_password", put)
+    backend = secrets.KeyringBackend()
+    assert backend.get(secrets.SMUGMUG_API_KEY) == "KEY"
+    assert backend.get(secrets.FLICKR_TOKEN) == "TOK"
+    assert json.loads(store[secrets.BUNDLE_ENTRY])[secrets.FLICKR_TOKEN] == "TOK"
+
+    # A later run reads only the one entry, and only once.
+    reads.clear()
+    later = secrets.KeyringBackend()
+    later.get(secrets.SMUGMUG_API_KEY)
+    later.get(secrets.FLICKR_TOKEN)
+    assert reads == [secrets.BUNDLE_ENTRY]
+
+    # A new version writes the entry again (so it becomes the entry's creator on macOS).
+    store[secrets.BUNDLE_ENTRY] = json.dumps({secrets.FLICKR_TOKEN: "TOK", "_written_by": "0.9"})
+    secrets.KeyringBackend().get(secrets.FLICKR_TOKEN)
+    assert json.loads(store[secrets.BUNDLE_ENTRY])["_written_by"] != "0.9"
