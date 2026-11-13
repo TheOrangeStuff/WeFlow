@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.7 — 2026-11-13
+
+- Fixed: on accounts with more than 2000 galleries, the newest galleries were missing
+  from the list. WeFlow now reads every gallery.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.6.6 — 2026-11-13
 
 - When a button takes a few seconds, such as **Connect**, the window greys out and shows

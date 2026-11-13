@@ -271,6 +271,17 @@ def test_fr39_smugmug_lists_every_page_newest_first(
     assert starts == [1, 1 + uploaders.SMUGMUG_PAGE]
 
 
+def test_fr39_smugmug_lists_past_2000_galleries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SmugMug lists oldest first: the newest gallery sits on the last page."""
+    pages = [[gallery(f"A{i}", f"Old {i}", "2020-01-01T00:00:00+00:00")] for i in range(25)]
+    pages.append([gallery("NEW", "Fun Run", "2026-11-13T00:00:00+00:00")])
+    uploader = SmugMugUploader()
+    monkeypatch.setattr(uploader, "_session", lambda: ListingSession(pages))
+    choices = uploader.list_albums()
+    assert choices[0].name == "Fun Run"
+    assert len(choices) == 26
+
+
 def test_fr39_smugmug_list_expired_sign_in(monkeypatch: pytest.MonkeyPatch) -> None:
     uploader = SmugMugUploader()
     monkeypatch.setattr(uploader, "_session", lambda: ListingSession([], status=401))

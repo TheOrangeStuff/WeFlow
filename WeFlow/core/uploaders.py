@@ -53,9 +53,9 @@ class AlbumChoice:
     where: str = ""  # SmugMug folder path, to tell same-named galleries apart
 
 
-MAX_ALBUMS = 2000  # stop listing after this many, so a huge account stays quick
+MAX_ALBUMS = 50000  # safety bound only: SmugMug lists oldest first, so read every page
 SMUGMUG_PAGE = 100
-SMUGMUG_PARALLEL = 6  # gallery pages fetched at the same time
+SMUGMUG_PARALLEL = 8  # gallery pages fetched at the same time
 SMUGMUG_ALBUM_FIELDS = "Uri,Name,NodeID,UrlPath,Date"  # _filter: skip the rest of each gallery
 
 
@@ -448,7 +448,12 @@ class SmugMugUploader:
                 take(body)
                 pages = body.get("Pages") or {}
         found.sort(key=lambda item: item[0], reverse=True)
-        log.info("SmugMug listed %d galleries in %.1fs", len(found), time.monotonic() - started)
+        log.info(
+            "SmugMug listed %d of %d galleries in %.1fs",
+            len(found),
+            total or len(found),
+            time.monotonic() - started,
+        )
         return [choice for _, choice in found[:MAX_ALBUMS]]
 
     def create_album(self, name: str) -> AlbumChoice:
