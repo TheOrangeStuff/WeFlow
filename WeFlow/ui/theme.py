@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QObject, QRectF, QSize, Qt, Signal
@@ -115,8 +116,10 @@ def font_families() -> list[str]:
     return []
 
 
-def build_qss(t: dict[str, str]) -> str:
-    """The whole application stylesheet for one set of tokens."""
+def build_qss(t: dict[str, str], arrow: str = "") -> str:
+    """The whole application stylesheet for one set of tokens. ``arrow`` is the
+    path of the dropdown chevron drawn in this scheme's colours (see ``write_arrows``)."""
+    arrow_rule = f"image: url({arrow}); " if arrow else ""
     type_rules = "\n".join(
         f'QLabel[type="{name}"] {{ font-size: {px}px; font-weight: {weight}; '
         f"color: {t[colour]}; background: transparent; }}"
@@ -226,7 +229,7 @@ QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled {{ color: {t["text-2"]
     background: {t["surface-2"]}; }}
 QLineEdit[invalid="true"] {{ border: 1px solid {t["bad"]}; }}
 QComboBox::drop-down {{ border: none; width: 24px; }}
-QComboBox::down-arrow {{ image: none; }}
+QComboBox::down-arrow {{ {arrow_rule}width: 12px; height: 12px; }}
 QSpinBox::up-button, QSpinBox::down-button {{ width: 0; border: none; }}
 QComboBox QAbstractItemView, QListView#AlbumFinder {{ background: {t["surface"]};
     border: 1px solid {t["border"]};
@@ -272,6 +275,7 @@ class Theme(QObject):
         self.t = tokens("light")
         self._icons: dict[tuple[str, str, int, str], QPixmap] = {}
         self._sources: dict[str, str] = {}
+        self.arrows: dict[str, str] = {}  # scheme -> chevron file for dropdowns
 
     def color(self, token: str) -> QColor:
         return QColor(self.t[token])
@@ -284,7 +288,7 @@ class Theme(QObject):
         app = QApplication.instance()
         if isinstance(app, QApplication):
             app.setPalette(self._palette())
-            app.setStyleSheet(build_qss(self.t))
+            app.setStyleSheet(build_qss(self.t, self.arrows.get(scheme, "")))
         self.changed.emit()
 
     def _palette(self) -> QPalette:
@@ -350,6 +354,21 @@ def preload_icons() -> None:
         theme._svg(path.stem)
 
 
+def write_arrows() -> None:
+    """Stylesheets take images only from files, so write the dropdown chevron in each
+    scheme's secondary text colour once, at start-up, before any window opens."""
+    folder = Path(tempfile.gettempdir()) / "WeFlow-icons"
+    try:
+        folder.mkdir(exist_ok=True)
+        for scheme in ("light", "dark"):
+            svg = theme._svg("chevron-down").replace("currentColor", tokens(scheme)["text-2"])
+            path = folder / f"chevron-down-{scheme}.svg"
+            path.write_text(svg, encoding="utf-8")
+            theme.arrows[scheme] = path.as_posix()
+    except OSError:
+        theme.arrows.clear()  # no arrow is better than no app
+
+
 def system_scheme(app: QApplication) -> str:
     forced = os.environ.get("WeFlow_THEME", "").lower()
     if forced in ("light", "dark"):
@@ -367,6 +386,7 @@ def install(app: QApplication) -> None:
         font.setFamily(family)
     font.setPixelSize(13)
     app.setFont(font)
+    write_arrows()
     theme.set_scheme(system_scheme(app))
     app.styleHints().colorSchemeChanged.connect(
         lambda _scheme: theme.set_scheme(system_scheme(app))

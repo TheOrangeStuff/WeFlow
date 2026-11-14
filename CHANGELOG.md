@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.2 — 2026-11-13
+
+- Your SmugMug galleries and Flickr albums are easy to find again: click the empty Gallery
+  box, or the new arrow, to open the list. You can also type to search it.
+- Every dropdown now shows an arrow, so it is clear you can open it.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.7.1 — 2026-11-13
 
 - In the event editor, the watermark margin now sits with the other watermark settings.

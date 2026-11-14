@@ -17,6 +17,7 @@ from WeFlow.core.uploaders import PendingAuth, UploadError
 from WeFlow.ui.event_editor import PREVIEW_DEBOUNCE_MS, EventEditor
 from WeFlow.ui.first_run import FirstRun
 from WeFlow.ui.settings_dialog import SettingsDialog
+from WeFlow.ui.theme import build_qss, theme
 
 ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
 
@@ -626,3 +627,20 @@ def test_ui_busy_cover_while_connect_runs(qtbot, window, bridge, monkeypatch) ->
     release.set()
     qtbot.waitUntil(lambda: not cover.isVisible(), timeout=3000)
     assert row.error.text().startswith("Can't reach SmugMug")
+
+
+def test_fr39_click_empty_gallery_box_opens_the_list(
+    qtbot, window, bridge, event, fake_uploader, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    fake_uploader.albums = [uploaders.AlbumChoice("/api/v2/album/A1", "Gala", "NA1", "Events")]
+    event.destination, event.album = "smugmug", ""
+    bridge.save_event(event)
+    editor = EventEditor(bridge, bridge.active(), window)
+    qtbot.addWidget(editor)
+    editor.show()
+    qtbot.waitUntil(lambda: editor.gallery.count() == 1, timeout=3000)
+    opened: list[bool] = []
+    monkeypatch.setattr(editor.gallery, "showPopup", lambda: opened.append(True))
+    qtbot.mouseClick(editor.album, Qt.MouseButton.LeftButton)
+    assert opened  # no hidden list: a click shows the galleries
+    assert "down-arrow { image: url(" in build_qss(theme.t, "/x/chevron.svg")

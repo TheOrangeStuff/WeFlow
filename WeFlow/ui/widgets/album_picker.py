@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QCompleter,
@@ -87,6 +87,7 @@ class AlbumPicker(QWidget):
         self.album: QLineEdit = line
         self.album.setText(album_name or album)
         self.album.textChanged.connect(self._on_text)
+        self.album.installEventFilter(self)  # a click in the empty box opens the list
         self.reload = Button("", "quiet", icon="refresh-cw", icon_token="text-2")
         self.reload.clicked.connect(lambda: self.load(refresh=True))
         self.new = Button("", "quiet", icon="plus", icon_token="text-2")
@@ -131,6 +132,16 @@ class AlbumPicker(QWidget):
         column.addWidget(self.new_row)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         self._relabel()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if (
+            watched is self.album
+            and event.type() == QEvent.Type.MouseButtonRelease
+            and not self.album.text()
+            and self.gallery.count()
+        ):
+            self.gallery.showPopup()
+        return super().eventFilter(watched, event)
 
     # ---------------------------------------------------------------- state
     def more_text(self) -> str:
