@@ -49,3 +49,26 @@ def test_fr16_eject_fake_volume_leaves_card_untouched(tmp_path: Path) -> None:
     before = sorted(p.name for p in card.rglob("*"))
     assert cards.eject(card) == (True, "Card ejected.")
     assert sorted(p.name for p in card.rglob("*")) == before
+
+
+def test_fr10_windows_fixed_usb_card_readers_count() -> None:
+    is_reader = cards.windows_drive_is_card_reader
+    assert is_reader(cards.DRIVE_REMOVABLE, None, False, system_drive=False)
+    assert is_reader(cards.DRIVE_FIXED, 7, False, system_drive=False)  # USB reader as fixed disk
+    assert is_reader(cards.DRIVE_FIXED, 0x0C, False, system_drive=False)  # SD bus
+    assert is_reader(cards.DRIVE_FIXED, None, True, system_drive=False)  # removable media
+    assert not is_reader(cards.DRIVE_FIXED, 0x11, False, system_drive=False)  # internal NVMe
+    assert not is_reader(cards.DRIVE_FIXED, 7, False, system_drive=True)  # the Windows drive
+    assert not is_reader(4, 7, False, system_drive=False)  # network drive
+
+
+def test_fr10_watcher_survives_a_failing_scan(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    seen: list[Event] = []
+    watcher = cards.CardWatcher(seen.append)
+
+    def broken() -> list[cards.Card]:
+        raise OSError("drive vanished")
+
+    monkeypatch.setattr(cards, "find_cards", broken)
+    watcher.poll()  # must not raise
+    assert seen == []

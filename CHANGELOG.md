@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.2 — 2026-11-14
+
+- On Windows, cards in USB card readers that show up as a normal disk are now found.
+  Before, WeFlow could miss them completely.
+- Settings › Copy log now notes each drive WeFlow sees and why it used or skipped it.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.8.1 — 2026-11-13
 
 - Picking a SmugMug gallery is simpler: press Choose Gallery… and pick from the list, or
