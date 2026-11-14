@@ -1,4 +1,5 @@
-"""The event card: which event is active, and the way to switch (UI-01, FR-02)."""
+"""The event line inside the status panel: "Photos go to <event>" and the way to switch
+(UI-01, FR-02)."""
 
 from __future__ import annotations
 
@@ -50,7 +51,8 @@ class EventCard(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._events: list[Profile] = []
         self._active_id = ""
-        self.name = label("", "title")
+        self.prefix = label("Photos go to", "body")
+        self.name = label("", "heading")
         self.summary = label("", "secondary")
         self.switch = Button(
             "Switch", "text", icon="chevron-down", icon_token="accent", icon_after=True
@@ -60,29 +62,34 @@ class EventCard(QFrame):
         self.switch.clicked.connect(self.open_switcher)
         self.menu = QMenu(self)
 
-        text = QVBoxLayout()
-        text.setSpacing(4)
-        text.addWidget(self.name)
-        text.addWidget(self.summary)
-        row = QHBoxLayout(self)
-        row.setContentsMargins(16, 16, 8, 16)
-        row.setSpacing(12)
-        row.addLayout(text, 1)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        row.addWidget(self.prefix)
+        row.addWidget(self.name)
         row.addWidget(self.switch)
+        row.addStretch(1)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(2)
+        column.addLayout(row)
+        column.addWidget(self.summary)
         self.set_events([], None)
 
     def set_events(self, events: list[Profile], active: Profile | None) -> None:
         self._events = sorted(events, key=lambda e: e.name.casefold())
         self._active_id = active.id if active else ""
         if active is None:
+            self.prefix.hide()
             self.name.setText("No event chosen")
             self.summary.setText("Choose or create an event to begin")
             self.switch.setText("Choose")
         else:
-            self.name.setText(active.name)
+            self.prefix.show()
+            self.name.setText(active.name if len(active.name) <= 40 else active.name[:39] + "…")
             self.summary.setText(event_summary(active))
             self.switch.setText("Switch")
-        self.name.setToolTip(self.name.text())
+        self.name.setToolTip(active.name if active else "")
 
     def build_menu(self) -> QMenu:
         """The popover: every event, then New event…, Edit this event…, Import folder…"""

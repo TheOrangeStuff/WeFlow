@@ -429,6 +429,7 @@ class Bridge(QObject):
                 self.connected = {s: found[0] for s, found in result.items()}
                 self.has_keys = {s: found[1] for s, found in result.items()}
                 self.services_changed.emit()
+                self.prefetch_albums()
 
         self.run(check, done)
 
@@ -466,6 +467,13 @@ class Bridge(QObject):
             done(result)
 
         self.run(job, finished)
+
+    def prefetch_albums(self) -> None:
+        """FR-39: fetch the galleries of every signed-in service in the background,
+        so the gallery chooser is ready the moment it opens."""
+        for service, connected in self.connected.items():
+            if connected and service not in self._albums:
+                self.list_albums(service, lambda _result: None)
 
     def list_albums(
         self, destination: str, done: Callable[[Any], None], refresh: bool = False

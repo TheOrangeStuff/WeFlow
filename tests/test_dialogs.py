@@ -42,6 +42,20 @@ def watermark(tmp_path: Path) -> str:
     return str(path)
 
 
+def chooser_for(qtbot, picker):  # type: ignore[no-untyped-def]
+    """Press "Choose Gallery…" and wait for the list in the chooser window."""
+    qtbot.mouseClick(picker.choose, Qt.MouseButton.LeftButton)
+    chooser = picker.chooser
+    assert chooser is not None and chooser.isVisible()
+    qtbot.waitUntil(lambda: chooser.reload.isEnabled(), timeout=3000)
+    return chooser
+
+
+def gallery_rows(chooser):  # type: ignore[no-untyped-def]
+    rows = [chooser.list.item(i) for i in range(chooser.list.count())]
+    return [r.text() for r in rows if r.data(Qt.ItemDataRole.UserRole) is None and not r.isHidden()]
+
+
 # ------------------------------------------------------------------ event editor
 def test_m5_create_event_copies_active_and_becomes_active(
     qtbot, window, bridge, store, event
@@ -72,7 +86,6 @@ def test_m5_edit_event_and_frozen_folder(qtbot, window, bridge, store, event) ->
     editor.name.setText("Renamed")
     editor.destination.setCurrentIndex(1)  # SmugMug
     editor.album.setText("https://me.smugmug.com/Events/Gala/n-Ab12Cd")
-    editor.keywords.setText("gala, 2026")
     editor.hold.setChecked(True)
     editor.auto_wb.setChecked(False)
     editor.wb_strength.slider.setValue(35)
@@ -80,11 +93,7 @@ def test_m5_edit_event_and_frozen_folder(qtbot, window, bridge, store, event) ->
     qtbot.mouseClick(editor.save, Qt.MouseButton.LeftButton)
     saved = store.get(event.id)
     assert saved.name == "Renamed" and saved.folder == "Test-Event"
-    assert (saved.destination, saved.keywords, saved.hold_uploads) == (
-        "smugmug",
-        "gala, 2026",
-        True,
-    )
+    assert (saved.destination, saved.hold_uploads) == ("smugmug", True)
     assert (saved.auto_wb, saved.wb_strength) == (False, 0.35)
     assert (saved.jpeg_quality, saved.max_long_edge) == (80, 0)
     assert window.event_card.summary.text() == "SmugMug · Gala · Held"
@@ -103,11 +112,18 @@ def test_fr39_pick_smugmug_gallery_from_list(
     editor = EventEditor(bridge, bridge.active(), window)
     qtbot.addWidget(editor)
     editor.show()
-    qtbot.waitUntil(lambda: editor.gallery.count() == 3, timeout=3000)
-    assert editor.album.text() == "Gala — Events"  # the pasted link, shown by name
-    assert not editor.album_hint.isVisible()
-    editor.gallery.setCurrentIndex(0)
-    assert editor.album.text() == "Smith Wedding"
+    qtbot.waitUntil(lambda: editor.album.text() == "Gala — Events", timeout=3000)  # by name
+    assert editor.album.isReadOnly() and editor.album_picker.choose.text() == "Choose Gallery…"
+    chooser = chooser_for(qtbot, editor.album_picker)
+    assert chooser.list.item(0).text() == "Create a gallery…"  # always at the top
+    assert gallery_rows(chooser) == ["Smith Wedding", "Gala — Events", "Gala — Archive"]
+    assert chooser.list.currentItem().text() == "Gala — Events"  # the event's gallery
+    shoot(chooser, "fr39-gallery-chooser-light")
+    chooser.search.setText("smith")  # search narrows the list
+    assert gallery_rows(chooser) == ["Smith Wedding"]
+    assert chooser.list.currentItem().text() == "Smith Wedding"
+    qtbot.mouseClick(chooser.ok, Qt.MouseButton.LeftButton)
+    assert editor.album.text() == "Smith Wedding" and editor.album_picker.chooser is None
     qtbot.mouseClick(editor.save, Qt.MouseButton.LeftButton)
     saved = store.get(event.id)
     assert (saved.album, saved.album_name) == ("/api/v2/album/B2", "Smith Wedding")
@@ -118,14 +134,12 @@ def test_fr39_pick_smugmug_gallery_from_list(
     again = EventEditor(bridge, bridge.active(), window)
     qtbot.addWidget(again)
     again.show()
-    qtbot.mouseClick(again.album_picker.reload, Qt.MouseButton.LeftButton)
-    qtbot.waitUntil(lambda: again.album_hint.text().startswith("SmugMug is not"), timeout=3000)
-    assert again.album.text() == "Smith Wedding" and again.save.isEnabled()
-    assert (again.current().album, again.current().album_name) == (
-        "/api/v2/album/B2",
-        "Smith Wedding",
-    )
-    again.album.setText("https://me.smugmug.com/Other/n-Zz9")  # pasting still works
+    chooser = chooser_for(qtbot, again.album_picker)
+    qtbot.mouseClick(chooser.reload, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: chooser.hint.text().startswith("SmugMug is not"), timeout=3000)
+    chooser.search.setText("https://me.smugmug.com/Other/n-Zz9")  # pasting still works
+    assert chooser.list.currentItem().text() == "Use this link"
+    qtbot.mouseClick(chooser.ok, Qt.MouseButton.LeftButton)
     assert (again.current().album, again.current().album_name) == (
         "https://me.smugmug.com/Other/n-Zz9",
         "",
@@ -151,7 +165,7 @@ def test_m5_inline_validation_disables_save(qtbot, window, bridge, store, event,
     assert not editor.album_field.isVisible()  # only shown when it applies
     editor.destination.setCurrentIndex(2)  # Flickr
     assert editor.album_field.isVisible() and editor.privacy_field.isVisible()
-    assert editor.album_error.text() == "Type the Flickr album title."
+    assert editor.album_error.text() == "Choose a Flickr album or create one."
     assert not editor.save.isEnabled()
     editor.album.setText("Gala Night")
     assert editor.save.isEnabled()
@@ -184,6 +198,42 @@ def test_m5_position_grid_only_corners_and_center(qtbot, window, bridge, event) 
     editor.position.cells["tl"].click()
     assert editor.position.position() == "tl" and editor.current().watermark_position == "tl"
     assert editor.watermark_box.isAncestorOf(editor.margin)  # margin lives with the watermark
+
+
+def test_fr04_pinch_zoom_keeps_the_line_on_the_photo(qtbot, window, bridge, event, sample) -> None:  # type: ignore[no-untyped-def]
+    from PySide6.QtCore import QPoint, QPointF
+    from PySide6.QtGui import QNativeGestureEvent, QPointingDevice
+
+    editor = EventEditor(bridge, bridge.active(), window)
+    qtbot.addWidget(editor)
+    editor.show()
+    editor.set_sample(sample)
+    preview = editor.preview
+    qtbot.waitUntil(preview.has_images, timeout=3000)
+    fit = preview._fit_rect()
+    centre = fit.center()
+    line_before = preview._line_x()
+    pinch = QNativeGestureEvent(
+        Qt.NativeGestureType.ZoomNativeGesture,
+        QPointingDevice.primaryPointingDevice(),
+        2,
+        centre,
+        centre,
+        preview.mapToGlobal(QPoint(int(centre.x()), int(centre.y()))).toPointF(),
+        1.0,  # zoom in to 2x
+        QPointF(),
+    )
+    QApplication.sendEvent(preview, pinch)
+    assert preview.zoom == 2.0
+    assert abs(preview._line_x() - line_before) < 1  # zoomed around the line: it stays
+    preview.pan_by(-50, 0)
+    assert abs(preview._line_x() - (line_before - 50)) < 1  # the line moves with the photo
+    assert preview.split == 0.5  # still the same spot on the photo
+    rect = preview._image_rect()
+    assert rect.left() <= 0 and rect.right() >= preview.width()  # no empty side edges
+    shoot(editor, "fr04-preview-zoomed-light")
+    preview.reset_zoom()
+    assert preview.zoom == 1.0 and preview._image_rect() == fit
 
 
 def test_fr04_live_preview_renders_off_the_ui_thread_within_500ms(  # type: ignore[no-untyped-def]
@@ -384,30 +434,6 @@ def test_nfr10_copy_log_from_settings(qtbot, window, bridge, store) -> None:  # 
     assert "authuser -> 200" in QApplication.clipboard().text()
 
 
-def test_fr41_shows_twenty_newest_then_more(
-    qtbot, window, bridge, store, event, fake_uploader
-) -> None:  # type: ignore[no-untyped-def]
-    fake_uploader.albums = [
-        uploaders.AlbumChoice(f"/api/v2/album/G{i}", f"Gallery {i}") for i in range(45)
-    ]
-    event.destination, event.album = "smugmug", "/api/v2/album/G30"  # an older one
-    bridge.save_event(event)
-    editor = EventEditor(bridge, bridge.active(), window)
-    qtbot.addWidget(editor)
-    editor.show()
-    gallery = editor.gallery
-    qtbot.waitUntil(lambda: gallery.count() == 22, timeout=3000)  # 20 + saved + More
-    assert gallery.itemText(0) == "Gallery 0" and gallery.itemText(20) == "Gallery 30"
-    assert gallery.itemText(21) == "More galleries…" and editor.album.text() == "Gallery 30"
-    gallery.setCurrentIndex(21)  # pick "More galleries…"
-    qtbot.waitUntil(lambda: gallery.count() == 41, timeout=3000)  # 40 + More
-    assert editor.album.text() == "Gallery 30"  # the choice is kept
-    assert editor.current().album == "/api/v2/album/G30"
-    gallery.hidePopup()
-    editor.album.setText("Gallery 44")  # typing an older name still finds it
-    assert editor.current().album == "/api/v2/album/G44"
-
-
 # --------------------------------------------------------------------- first run
 def test_fr41_new_gallery_from_the_editor(
     qtbot, window, bridge, store, event, fake_uploader
@@ -418,22 +444,28 @@ def test_fr41_new_gallery_from_the_editor(
     editor = EventEditor(bridge, bridge.active(), window)
     qtbot.addWidget(editor)
     editor.show()
-    picker = editor.album_picker
-    qtbot.waitUntil(lambda: editor.gallery.count() == 1, timeout=3000)
-    assert picker.new.toolTip() == "New gallery" and not picker.new_row.isVisible()
-    qtbot.mouseClick(picker.new, Qt.MouseButton.LeftButton)
-    assert picker.new_row.isVisible() and picker.new_name.text() == event.name  # suggested
-    picker.new_name.setText("Smith Wedding")
-    shoot(editor, "fr41-new-gallery-open-light")
-    qtbot.mouseClick(picker.create_button, Qt.MouseButton.LeftButton)
-    qtbot.waitUntil(lambda: editor.gallery.count() == 2, timeout=3000)
-    assert fake_uploader.created == ["Smith Wedding"] and not picker.new_row.isVisible()
-    shoot(editor, "fr41-new-gallery-light")
-    assert editor.gallery.itemText(0) == "Smith Wedding"  # newest first
-    assert editor.album.text() == "Smith Wedding"
+    chooser = chooser_for(qtbot, editor.album_picker)
+    chooser.list.setCurrentRow(0)  # "Create a gallery…"
+    assert chooser.ok.text() == "Next"
+    qtbot.mouseClick(chooser.ok, Qt.MouseButton.LeftButton)
+    # Creating is its own step: the list is gone, so it is clear where photos go.
+    assert chooser.pages.currentIndex() == 1 and not chooser.list.isVisible()
+    assert chooser.new_name.text() == event.name and chooser.ok.text() == "Create"
+    chooser.new_name.setText("Smith Wedding")
+    shoot(chooser, "fr41-new-gallery-open-light")
+    qtbot.mouseClick(chooser.back, Qt.MouseButton.LeftButton)  # Back returns to the list
+    assert chooser.list.isVisible() and fake_uploader.created == []
+    chooser.list.setCurrentRow(0)
+    qtbot.mouseClick(chooser.ok, Qt.MouseButton.LeftButton)
+    chooser.new_name.setText("Smith Wedding")
+    qtbot.mouseClick(chooser.ok, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: editor.album.text() == "Smith Wedding", timeout=3000)
+    assert fake_uploader.created == ["Smith Wedding"] and editor.album_picker.chooser is None
     qtbot.mouseClick(editor.save, Qt.MouseButton.LeftButton)
     saved = store.get(event.id)
     assert (saved.album, saved.album_name) == ("/api/v2/album/new1", "Smith Wedding")
+    chooser = chooser_for(qtbot, editor.album_picker)
+    assert gallery_rows(chooser) == ["Smith Wedding", "Old Gala"]  # newest first
 
 
 def test_fr41_first_run_lists_galleries_after_sign_in(qtbot, bridge, fake_uploader) -> None:  # type: ignore[no-untyped-def]
@@ -443,8 +475,9 @@ def test_fr41_first_run_lists_galleries_after_sign_in(qtbot, bridge, fake_upload
     wizard.show()
     wizard.destination.setCurrentIndex(1)  # SmugMug
     wizard.go(2)
-    qtbot.waitUntil(lambda: wizard.album_picker.gallery.count() == 1, timeout=3000)
-    wizard.album_picker.gallery.setCurrentIndex(0)
+    chooser = chooser_for(qtbot, wizard.album_picker)
+    chooser.select("Smith Wedding")
+    qtbot.mouseClick(chooser.ok, Qt.MouseButton.LeftButton)
     event = wizard.current_event()
     assert (event.album, event.album_name) == ("/api/v2/album/B2", "Smith Wedding")
 
@@ -585,17 +618,27 @@ def test_fr39_gallery_list_is_kept_until_reload(
     bridge.save_event(event)
     first = EventEditor(bridge, bridge.active(), window)
     qtbot.addWidget(first)
-    qtbot.waitUntil(lambda: first.gallery.count() == 1, timeout=3000)
+    first.show()
+    assert gallery_rows(chooser_for(qtbot, first.album_picker)) == ["Old Gala"]
     fake_uploader.albums = [
         uploaders.AlbumChoice("/api/v2/album/B2", "Smith Wedding", "NB2"),
         *fake_uploader.albums,
     ]
     again = EventEditor(bridge, bridge.active(), window)  # reopened: no new fetch
     qtbot.addWidget(again)
-    qtbot.waitUntil(lambda: again.gallery.count() == 1, timeout=3000)
-    qtbot.mouseClick(again.album_picker.reload, Qt.MouseButton.LeftButton)
-    qtbot.waitUntil(lambda: again.gallery.count() == 2, timeout=3000)
-    assert again.gallery.itemText(0) == "Smith Wedding"
+    again.show()
+    chooser = chooser_for(qtbot, again.album_picker)
+    assert gallery_rows(chooser) == ["Old Gala"]
+    qtbot.mouseClick(chooser.reload, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: gallery_rows(chooser) == ["Smith Wedding", "Old Gala"], timeout=3000)
+
+
+def test_fr39_galleries_fetched_at_sign_in(qtbot, bridge, fake_uploader) -> None:  # type: ignore[no-untyped-def]
+    fake_uploader.albums = [uploaders.AlbumChoice("/api/v2/album/A1", "Gala", "NA1")]
+    bridge.connected["smugmug"] = True
+    bridge.prefetch_albums()  # runs after every sign-in check, before any editor opens
+    qtbot.waitUntil(lambda: "smugmug" in bridge._albums, timeout=3000)
+    assert [c.name for c in bridge._albums["smugmug"]] == ["Gala"]
 
 
 def test_ui_busy_cover_while_connect_runs(qtbot, window, bridge, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -629,8 +672,8 @@ def test_ui_busy_cover_while_connect_runs(qtbot, window, bridge, monkeypatch) ->
     assert row.error.text().startswith("Can't reach SmugMug")
 
 
-def test_fr39_click_empty_gallery_box_opens_the_list(
-    qtbot, window, bridge, event, fake_uploader, monkeypatch
+def test_fr39_click_gallery_box_opens_the_chooser(
+    qtbot, window, bridge, event, fake_uploader
 ) -> None:  # type: ignore[no-untyped-def]
     fake_uploader.albums = [uploaders.AlbumChoice("/api/v2/album/A1", "Gala", "NA1", "Events")]
     event.destination, event.album = "smugmug", ""
@@ -638,9 +681,8 @@ def test_fr39_click_empty_gallery_box_opens_the_list(
     editor = EventEditor(bridge, bridge.active(), window)
     qtbot.addWidget(editor)
     editor.show()
-    qtbot.waitUntil(lambda: editor.gallery.count() == 1, timeout=3000)
-    opened: list[bool] = []
-    monkeypatch.setattr(editor.gallery, "showPopup", lambda: opened.append(True))
     qtbot.mouseClick(editor.album, Qt.MouseButton.LeftButton)
-    assert opened  # no hidden list: a click shows the galleries
+    assert editor.album_picker.chooser is not None  # a click shows the galleries
+    editor.album_picker.chooser.reject()
+    assert editor.album.text() == ""  # Cancel changes nothing
     assert "down-arrow { image: url(" in build_qss(theme.t, "/x/chevron.svg")

@@ -4,17 +4,31 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QImage, QKeyEvent, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap
+from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QImage,
+    QKeyEvent,
+    QMouseEvent,
+    QNativeGestureEvent,
+    QPainter,
+    QPainterPath,
+    QPaintEvent,
+    QPen,
+    QPixmap,
+    QResizeEvent,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
     QDialog,
     QFileDialog,
+    QGestureEvent,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPinchGesture,
     QScrollArea,
     QSizePolicy,
     QSlider,
@@ -37,6 +51,9 @@ from .widgets.album_picker import AlbumPicker
 from .widgets.common import Button, Toggle, label, restyle, separator
 
 PREVIEW_DEBOUNCE_MS = 150
+ZOOM_MAX = 8.0
+ZOOM_STEP = 1.25  # one scroll notch or key press
+LINE_GRAB = 12  # px either side of the line that drag the line, not the photo
 DESTINATION_LABELS = [
     ("none", "This computer only"),
     ("smugmug", "SmugMug"),
@@ -184,19 +201,31 @@ class PositionPicker(QWidget):
 
 
 class PreviewSplit(QWidget):
-    """Before on the left of the line, after on the right. Drag the line to compare."""
+    """Before on the left of the line, after on the right. Drag the line to compare.
+
+    Pinch (or Ctrl + scroll) zooms around the fingers, scroll or drag pans, and
+    double-click goes back to the whole photo. The line is pinned to the photo,
+    so it stays on the same spot while zooming and panning.
+    """
 
     def __init__(self) -> None:
         super().__init__()
         self._before: QPixmap | None = None
         self._after: QPixmap | None = None
-        self.split = 0.5
+        self.split = 0.5  # where the line is, across the photo (0 left .. 1 right)
+        self.zoom = 1.0
+        self._origin = QPointF()  # top-left of the zoomed photo, in widget pixels
+        self._drag: str = ""  # "split" or "pan" while the mouse is held
+        self._drag_from = QPointF()
+        self._pinch_from = 1.0
         self.message = "Choose a sample photo to preview the look."
         self.setMinimumSize(240, 240)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.setCursor(Qt.CursorShape.SplitHCursor)
         self.setAccessibleName("Before and after preview")
+        self.setToolTip("Pinch or Ctrl + scroll to zoom. Double-click to see the whole photo.")
+        self.grabGesture(Qt.GestureType.PinchGesture)  # touch screens
         theme.changed.connect(self.update)
 
     def has_images(self) -> bool:
@@ -204,14 +233,17 @@ class PreviewSplit(QWidget):
 
     def set_images(self, before: QImage, after: QImage) -> None:
         self._before, self._after = QPixmap.fromImage(before), QPixmap.fromImage(after)
+        self._clamp()
         self.update()
 
     def set_message(self, message: str) -> None:
         self._before = self._after = None
         self.message = message
-        self.update()
+        self.reset_zoom()
 
-    def _image_rect(self) -> QRectF:
+    # ------------------------------------------------------------- geometry
+    def _fit_rect(self) -> QRectF:
+        """The whole photo, fitted into the widget."""
         if self._after is None:
             return QRectF(self.rect())
         size = self._after.size().scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio)
@@ -222,29 +254,164 @@ class PreviewSplit(QWidget):
             size.height(),
         )
 
+    def _image_rect(self) -> QRectF:
+        """Where the (maybe zoomed) photo is drawn."""
+        fit = self._fit_rect()
+        if self.zoom <= 1.0:
+            return fit
+        return QRectF(self._origin, fit.size() * self.zoom)
+
+    def _clamp(self) -> None:
+        """Keep the zoomed photo filling the preview: centred along a side where it
+        is still smaller than the preview, with no empty edge where it is larger."""
+        fit = self._fit_rect()
+        if self.zoom <= 1.0:
+            self.zoom, self._origin = 1.0, fit.topLeft()
+            return
+        width, height = fit.width() * self.zoom, fit.height() * self.zoom
+
+        def place(start: float, size: float, room: float) -> float:
+            if size <= room:
+                return (room - size) / 2
+            return min(0.0, max(room - size, start))
+
+        self._origin = QPointF(
+            place(self._origin.x(), width, self.width()),
+            place(self._origin.y(), height, self.height()),
+        )
+
+    def zoom_by(self, factor: float, around: QPointF | None = None) -> None:
+        """Zoom by ``factor``, keeping the photo point under ``around`` still."""
+        if not self.has_images():
+            return
+        rect = self._image_rect()
+        point = around if around is not None else QPointF(self._fit_rect().center())
+        new_zoom = min(ZOOM_MAX, max(1.0, self.zoom * factor))
+        if new_zoom == self.zoom:
+            return
+        scale = new_zoom / self.zoom
+        self._origin = point - (point - rect.topLeft()) * scale
+        self.zoom = new_zoom
+        self._clamp()
+        self.update()
+
+    def reset_zoom(self) -> None:
+        self.zoom = 1.0
+        self._clamp()
+        self.update()
+
+    def pan_by(self, dx: float, dy: float) -> None:
+        if self.zoom > 1.0:
+            self._origin += QPointF(dx, dy)
+            self._clamp()
+            self.update()
+
+    def _line_x(self) -> float:
+        rect = self._image_rect()
+        return rect.left() + rect.width() * self.split
+
     def _set_split_from(self, x: float) -> None:
         rect = self._image_rect()
         if rect.width() > 0:
             self.split = min(1.0, max(0.0, (x - rect.left()) / rect.width()))
             self.update()
 
+    # --------------------------------------------------------------- input
+    def event(self, event: QEvent) -> bool:
+        kind = event.type()
+        if kind == QEvent.Type.NativeGesture and isinstance(event, QNativeGestureEvent):
+            gesture = event.gestureType()
+            if gesture == Qt.NativeGestureType.ZoomNativeGesture:  # trackpad pinch
+                self.zoom_by(1.0 + event.value(), event.position())
+                return True
+            if gesture == Qt.NativeGestureType.SmartZoomNativeGesture:  # two-finger double tap
+                if self.zoom > 1.0:
+                    self.reset_zoom()
+                else:
+                    self.zoom_by(2.0, event.position())
+                return True
+        if kind == QEvent.Type.Gesture and isinstance(event, QGestureEvent):
+            pinch = event.gesture(Qt.GestureType.PinchGesture)
+            if isinstance(pinch, QPinchGesture):
+                if pinch.state() == Qt.GestureState.GestureStarted:
+                    self._pinch_from = 1.0
+                total = pinch.totalScaleFactor()
+                if self._pinch_from > 0:
+                    self.zoom_by(total / self._pinch_from, self.mapFromGlobal(pinch.centerPoint()))
+                self._pinch_from = total
+                event.accept()
+                return True
+        return super().event(event)
+
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        if not self.has_images():
+            return
+        modifiers = event.modifiers()
+        if modifiers & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier):
+            steps = event.angleDelta().y() / 120  # Windows touchpads pinch as Ctrl + scroll
+            self.zoom_by(ZOOM_STEP**steps, event.position())
+        elif self.zoom > 1.0:
+            delta = event.pixelDelta()
+            if delta.isNull():
+                delta = event.angleDelta() / 2
+            self.pan_by(delta.x(), delta.y())
+        else:
+            event.ignore()
+            return
+        event.accept()
+
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        self._set_split_from(event.position().x())
+        x = event.position().x()
+        near_line = abs(x - self._line_x()) <= LINE_GRAB
+        self._drag = "pan" if self.zoom > 1.0 and not near_line else "split"
+        self._drag_from = event.position()
+        if self._drag == "split":
+            self._set_split_from(x)
+        else:
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if event.buttons() & Qt.MouseButton.LeftButton:
+        if not event.buttons() & Qt.MouseButton.LeftButton:
+            return
+        if self._drag == "pan":
+            delta = event.position() - self._drag_from
+            self._drag_from = event.position()
+            self.pan_by(delta.x(), delta.y())
+        else:
             self._set_split_from(event.position().x())
 
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        self._drag = ""
+        self.setCursor(Qt.CursorShape.SplitHCursor)
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        if self.zoom > 1.0:
+            self.reset_zoom()
+        else:
+            self.zoom_by(2.0, event.position())
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
-        if event.key() == Qt.Key.Key_Left:
+        key = event.key()
+        if key == Qt.Key.Key_Left:
             self.split = max(0.0, self.split - 0.05)
-        elif event.key() == Qt.Key.Key_Right:
+        elif key == Qt.Key.Key_Right:
             self.split = min(1.0, self.split + 0.05)
+        elif key in (Qt.Key.Key_Plus, Qt.Key.Key_Equal):
+            self.zoom_by(ZOOM_STEP)
+        elif key == Qt.Key.Key_Minus:
+            self.zoom_by(1 / ZOOM_STEP)
+        elif key == Qt.Key.Key_0:
+            self.reset_zoom()
         else:
             super().keyPressEvent(event)
             return
         self.update()
 
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        self.reset_zoom()
+        super().resizeEvent(event)
+
+    # --------------------------------------------------------------- paint
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -261,17 +428,35 @@ class PreviewSplit(QWidget):
             )
             return
         rect = self._image_rect()
-        x = rect.left() + rect.width() * self.split
+        shown = rect.intersected(QRectF(self.rect()))  # the part of the photo on screen
+        x = self._line_x()
+        clip = QPainterPath()
+        clip.addRoundedRect(QRectF(self.rect()), 12, 12)
+        painter.save()
+        painter.setClipPath(clip)  # a zoomed photo stays inside the preview
         painter.drawPixmap(rect, self._after, QRectF(self._after.rect()))
         painter.save()
-        painter.setClipRect(QRectF(rect.left(), rect.top(), x - rect.left(), rect.height()))
+        painter.setClipRect(
+            QRectF(rect.left(), rect.top(), x - rect.left(), rect.height()),
+            Qt.ClipOperation.IntersectClip,
+        )
         painter.drawPixmap(rect, self._before, QRectF(self._before.rect()))
         painter.restore()
-        painter.setPen(QPen(theme.color("surface"), 2))
-        painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
-        painter.setPen(QPen(theme.color("text-2"), 1))
-        painter.setBrush(theme.color("surface"))
-        painter.drawEllipse(QPointF(x, rect.center().y()), 8, 8)
+        if shown.left() - 1 <= x <= shown.right() + 1:
+            painter.setPen(QPen(theme.color("surface"), 2))
+            painter.drawLine(QPointF(x, shown.top()), QPointF(x, shown.bottom()))
+            painter.setPen(QPen(theme.color("text-2"), 1))
+            painter.setBrush(theme.color("surface"))
+            painter.drawEllipse(QPointF(x, shown.center().y()), 8, 8)
+        painter.restore()
+        if self.zoom > 1.0:
+            text = f"{self.zoom:.1f}×"
+            badge = QRectF(self.width() - 56, 8, 48, 22)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(theme.color("surface"))
+            painter.drawRoundedRect(badge, 11, 11)
+            painter.setPen(theme.color("text-2"))
+            painter.drawText(badge, Qt.AlignmentFlag.AlignCenter, text)
         if self.hasFocus():
             painter.setPen(QPen(theme.color("accent"), 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -314,9 +499,7 @@ class EventEditor(QDialog):
             event.album_name,
             suggest=lambda: self.name.text().strip(),
         )
-        self.gallery = self.album_picker.gallery
         self.album = self.album_picker.album
-        self.album_reload = self.album_picker.reload
         self.album_hint = self.album_picker.hint
         self.album_error = self.album_picker.error
         self.album_field: QWidget = self.album_picker
@@ -325,9 +508,6 @@ class EventEditor(QDialog):
             self.privacy.addItem(PRIVACY_LABELS[value], value)
         self.privacy.setCurrentIndex(FLICKR_PRIVACY.index(event.flickr_privacy))
         self.privacy_field = field("Who can see the photos", self.privacy)
-        self.keywords = QLineEdit(event.keywords)
-        self.keywords.setPlaceholderText("wedding, smith, 2026")
-        self.keywords_field = field("Keywords", self.keywords)
         self.hold = Toggle(event.hold_uploads)
         self.hold_row = toggle_row(
             "Hold uploads for review",
@@ -395,7 +575,6 @@ class EventEditor(QDialog):
         left.addWidget(field("Where photos go", self.destination))
         left.addWidget(self.album_field)
         left.addWidget(self.privacy_field)
-        left.addWidget(self.keywords_field)
         left.addWidget(self.hold_row)
         left.addWidget(self.keep_row)
         left.addWidget(separator())
@@ -523,7 +702,7 @@ class EventEditor(QDialog):
         self._debounce.setInterval(PREVIEW_DEBOUNCE_MS)
         self._debounce.timeout.connect(self._request_preview)
         self.album_picker.changed.connect(self._changed)
-        for line in (self.name, self.keywords, self.custom_name):
+        for line in (self.name, self.custom_name):
             line.textChanged.connect(self._changed)
         for combo in (self.destination, self.privacy, self.naming):
             combo.currentIndexChanged.connect(self._changed)
@@ -563,7 +742,6 @@ class EventEditor(QDialog):
             destination=self.destination.currentData(),
             **self.album_picker.fields(),
             flickr_privacy=self.privacy.currentData(),
-            keywords=self.keywords.text().strip(),
             hold_uploads=self.hold.isChecked(),
             keep_processed=self.keep.isChecked(),
             auto_wb=self.auto_wb.isChecked(),
@@ -593,7 +771,7 @@ class EventEditor(QDialog):
     def _changed(self) -> None:
         event = self.current()
         uploads = event.destination != "none"
-        for widget in (self.album_field, self.keywords_field, self.hold_row, self.keep_row):
+        for widget in (self.album_field, self.hold_row, self.keep_row):
             widget.setVisible(uploads)
         self.privacy_field.setVisible(event.destination == "flickr")
         self.wb_strength.setEnabled(event.auto_wb)

@@ -158,7 +158,7 @@ QLabel[tinted="true"] {{ color: {t["text"]}; }}
 QLabel[type="error"] {{ font-size: 12px; color: {t["bad-strong"]}; }}
 QLabel[type="thumb"] {{ background: {t["border"]}; border-radius: 6px; }}
 
-QFrame#EventCard {{ background: {t["surface-2"]}; border-radius: {RADIUS_CARD}px; }}
+QFrame#EventCard {{ background: transparent; }}
 QFrame#Card {{ background: {t["surface"]}; border: 1px solid {t["border"]};
     border-radius: {RADIUS_CARD}px; }}
 QFrame#NoticeBar {{ background: {t["surface"]}; border: 1px solid {t["border"]};
@@ -231,10 +231,12 @@ QLineEdit[invalid="true"] {{ border: 1px solid {t["bad"]}; }}
 QComboBox::drop-down {{ border: none; width: 24px; }}
 QComboBox::down-arrow {{ {arrow_rule}width: 12px; height: 12px; }}
 QSpinBox::up-button, QSpinBox::down-button {{ width: 0; border: none; }}
-QComboBox QAbstractItemView, QListView#AlbumFinder {{ background: {t["surface"]};
+QComboBox QAbstractItemView, QListWidget#GalleryList {{ background: {t["surface"]};
     border: 1px solid {t["border"]};
     border-radius: {RADIUS_CONTROL}px; padding: 4px; outline: none;
     selection-background-color: {t["surface-2"]}; selection-color: {t["text"]}; }}
+QListWidget#GalleryList::item {{ min-height: 28px; padding: 0 8px; border-radius: 6px; }}
+QListWidget#GalleryList::item:selected {{ background: {t["surface-2"]}; color: {t["text"]}; }}
 
 QSlider {{ min-height: 24px; max-height: 24px; }}
 QSlider::groove:horizontal {{ height: 4px; border-radius: 2px; background: {t["border"]}; }}

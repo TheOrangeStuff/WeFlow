@@ -149,9 +149,9 @@ class Profile:
         if self.destination not in DESTINATIONS:
             errors["destination"] = "Choose where photos should go."
         elif self.destination == "smugmug" and not self.album.strip():
-            errors["album"] = "Choose a SmugMug gallery or paste its link."
+            errors["album"] = "Choose a SmugMug gallery."
         elif self.destination == "flickr" and not self.album.strip():
-            errors["album"] = "Type the Flickr album title."
+            errors["album"] = "Choose a Flickr album or create one."
         if self.flickr_privacy not in FLICKR_PRIVACY:
             errors["flickr_privacy"] = "Choose who can see the photos."
         if self.watermark:

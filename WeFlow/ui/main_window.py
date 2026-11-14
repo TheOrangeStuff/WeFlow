@@ -91,7 +91,7 @@ class MainWindow(QMainWindow):
         top_bar.setFixedHeight(48)
         top_bar.setLayout(top)
 
-        # 2. Event card
+        # 2. Event line ("Photos go to <event>  Switch"), shown inside the status panel
         self.event_card = EventCard()
         self.event_card.switch_requested.connect(self.bridge.set_active)
         self.event_card.new_requested.connect(self._new_event)
@@ -114,6 +114,7 @@ class MainWindow(QMainWindow):
         self.panel.details_clicked.connect(lambda: self.drawer.open_drawer())
         self.panel.open_folder_clicked.connect(self._open_folder)
         self.panel.resume_clicked.connect(lambda: self._set_paused(False))
+        self.panel.set_event_line(self.event_card)
 
         # 4. Earlier cards
         self.earlier_label = label("Earlier cards", "label")
@@ -147,8 +148,6 @@ class MainWindow(QMainWindow):
         column.setSpacing(0)
         column.addWidget(top_bar)
         column.addSpacing(8)
-        column.addWidget(self.event_card)
-        column.addSpacing(12)
         column.addWidget(self.notice_bar)
         self._notice_gap = QWidget()
         self._notice_gap.setFixedHeight(12)

@@ -342,3 +342,30 @@ went in 1.7.0, leaving only the margin, so the margin slider ("Margin") now sits
 and Opacity under Watermark and the "More" section is removed. Thin separators divide the
 Destination, Look, Watermark and Export sections. The saved field (`watermark_margin`) is
 unchanged.
+
+## 1.8.0 — Gallery chooser, no Keywords box, zoomable preview, one main panel
+
+The owner found the gallery dropdown confusing, especially while making a new gallery
+(was the photo going to the new one or the selected one?). The editor now shows the
+chosen gallery in a read-only box with a "Choose Gallery…" button. That opens a window
+listing every gallery (searchable, no "More" paging), with "Create a gallery…" as the
+first row. Creating swaps the list for a naming step, and the new gallery is chosen
+when it is made. Pasting a SmugMug link still works through the search box ("Use this
+link"). Typing a Flickr title in the field is replaced by "Create an album…", which
+already worked that way (FR-41). The bridge fetches each signed-in service's list in the
+background after every sign-in check, so the list is ready before the editor opens.
+
+The Keywords box is removed at the owner's request. `keywords` stays in the event JSON,
+and keywords saved by older versions are still sent with uploads, so events read the
+same in every version.
+
+The before/after preview zooms (trackpad pinch, touch pinch, Ctrl + scroll, +/-, 0) up to
+8x, around the fingers or pointer. The split line is stored as a point on the photo, so
+it zooms and pans with the photo. Dragging near the line moves it; dragging elsewhere
+pans; double-click toggles between 2x and the whole photo.
+
+The main window's event card and status panel are merged: the event line ("Photos go to
+<event>  Switch") sits in the status panel under the headline, in every state, and the
+status icon is 56 px instead of 20. Switch is still always visible, so UI-05's control
+count is unchanged.
+

@@ -33,6 +33,7 @@ LOOKS = {
     "copy_error": ("bad", "triangle-alert", "bad-strong"),
 }
 STATES = tuple(LOOKS)
+ICON_SIZE = 56
 
 
 @dataclass(frozen=True)
@@ -175,7 +176,7 @@ class StatusPanel(QFrame):
         self._fade: QLabel | None = None
         self._fade_anim: QPropertyAnimation | None = None
 
-        self.icon = Icon("card-sim", "text-2", 20)
+        self.icon = Icon("card-sim", "text-2", ICON_SIZE)
         self.headline = label("", "display", wrap=True)
         self.subline = label("", "body", wrap=True)
         self.tracker = StepTracker()
@@ -247,9 +248,20 @@ class StatusPanel(QFrame):
         column.addWidget(self.headline)
         column.addSpacing(4)
         column.addWidget(self.subline)
+        self._event_box = QVBoxLayout()
+        self._event_box.setContentsMargins(0, 0, 0, 0)
+        column.addLayout(self._event_box)
         column.addWidget(self._track_box)
         column.addWidget(self._button_box)
         column.addStretch(1)
+        self._event_line: QWidget | None = None
+        self._apply(self.view)
+
+    def set_event_line(self, widget: QWidget) -> None:
+        """Show the "Photos go to <event>  Switch" line under the headline (UI-01)."""
+        self._event_line = widget
+        self._event_box.setContentsMargins(0, 12, 0, 0)
+        self._event_box.addWidget(widget)
         self._apply(self.view)
 
     @property
@@ -275,7 +287,9 @@ class StatusPanel(QFrame):
         self.icon.set_icon(icon, token)
         self.headline.setText(view.headline)
         self.subline.setText(view.subline)
-        self.subline.setVisible(bool(view.subline))
+        # Idle: the event line already says where photos go.
+        said_by_line = view.state == "idle" and self._event_line is not None
+        self.subline.setVisible(bool(view.subline) and not said_by_line)
         self.tracker.setVisible(view.step >= 0)
         if view.step >= 0:
             self.tracker.set_current(view.step)

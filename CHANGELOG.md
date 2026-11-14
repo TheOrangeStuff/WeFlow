@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.8.0 — 2026-11-13
+
+- Picking a SmugMug gallery is simpler: press Choose Gallery… and pick from the list, or
+  search it. You can still paste a gallery link there.
+- Your galleries load as soon as you're signed in, so the list is ready when you open it.
+- To make a new gallery, choose Create a gallery… at the top of the list. You name it on
+  its own step, so it's always clear where the photos will go.
+- The Keywords box is gone from the event editor.
+- Pinch (or Ctrl + scroll) to zoom into the before/after preview. Drag or scroll to look
+  around, and double-click to see the whole photo again. The split line stays on the photo.
+- The main screen is one panel now: a bigger card icon, "Insert a card", and below it
+  where photos go, with Switch right beside it.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.7.2 — 2026-11-13
 
 - Your SmugMug galleries and Flickr albums are easy to find again: click the empty Gallery

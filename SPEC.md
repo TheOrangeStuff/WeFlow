@@ -274,12 +274,12 @@ The panel shows the most recent batch. The **4-step tracker** (Copy · Process �
 
 - **Event editor** — a sheet (macOS) or dialog (Windows), 640 px wide.
   - Left column holds 4 groups, each with a heading:
-    - **Destination:** where, album (a dropdown of the user's galleries, FR-39, with + to make a new one, FR-41), privacy, keywords, hold toggle.
+    - **Destination:** where, album (*1.8.0:* a Choose Gallery… button that opens a list of the user's galleries, FR-39, with Create a gallery… at the top, FR-41), privacy, hold toggle.
     - **Look:** auto WB with strength slider, auto tone.
     - **Watermark:** toggle, file picker with thumbnail, position as a 3×3 grid picker (corners + center only enabled), size slider, opacity slider.
     - **Export** *(1.2.0)*: preset picker (Save as preset… / Delete preset), file naming, custom text and start number (only when the rule uses them), an example file name, quality slider, Limit file size toggle and size.
   - Rarely changed fields (resize, margin) sit in a collapsed "More" section.
-  - Right column: before/after preview of the sample photo (FR-04), with a draggable split line.
+  - Right column: before/after preview of the sample photo (FR-04), with a draggable split line. *(1.8.0)* Pinch or Ctrl + scroll zooms; the line stays pinned to the photo.
   - Validate inline (red helper text under the field). The Save button is disabled until the form is valid.
 - **Settings:**
   - Library folder.
