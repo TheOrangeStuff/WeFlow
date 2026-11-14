@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import replace
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt, QTimer, Signal
@@ -225,7 +226,10 @@ class PreviewSplit(QWidget):
         self.setCursor(Qt.CursorShape.SplitHCursor)
         self.setAccessibleName("Before and after preview")
         self.setToolTip("Pinch or Ctrl + scroll to zoom. Double-click to see the whole photo.")
-        self.grabGesture(Qt.GestureType.PinchGesture)  # touch screens
+        if sys.platform != "darwin":
+            # Touch screens. On macOS a trackpad pinch would also arrive this way, with
+            # its centre in local coordinates, so there only the native gesture is used.
+            self.grabGesture(Qt.GestureType.PinchGesture)
         theme.changed.connect(self.update)
 
     def has_images(self) -> bool:
