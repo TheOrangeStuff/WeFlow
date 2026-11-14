@@ -334,3 +334,11 @@ averaged over the last 20 s of finished photos). The safe line keeps the §7.3 t
 adds how long the copy took. When the card is out, or for a folder import, "Processing"
 now starts with "Copy done", and a folder import logs a "copy done" notice. Speed fields
 are saved with the batch but reset to 0 on the next launch.
+
+## 1.7.1 — No "More" section in the event editor
+
+SPEC §7 puts rarely changed fields (resize, margin) in a collapsed "More" section. Resize
+went in 1.7.0, leaving only the margin, so the margin slider ("Margin") now sits with Size
+and Opacity under Watermark and the "More" section is removed. Thin separators divide the
+Destination, Look, Watermark and Export sections. The saved field (`watermark_margin`) is
+unchanged.

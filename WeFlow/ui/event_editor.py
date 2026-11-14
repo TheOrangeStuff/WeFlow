@@ -34,7 +34,7 @@ from .bridge import (
 )
 from .theme import theme
 from .widgets.album_picker import AlbumPicker
-from .widgets.common import Button, Toggle, label, restyle
+from .widgets.common import Button, Toggle, label, restyle, separator
 
 PREVIEW_DEBOUNCE_MS = 150
 DESTINATION_LABELS = [
@@ -383,14 +383,14 @@ class EventEditor(QDialog):
             FILE_SIZE_KB_MIN, FILE_SIZE_KB_MAX, event.file_size_kb, " K", step=50
         )
         self.size_field = field("Limit file size to", self.size_kb)
-        self.margin = SliderRow("Watermark margin", 0, 10, round(event.watermark_margin * 100))
+        self.margin = SliderRow("Margin", 0, 10, round(event.watermark_margin * 100))
 
         # --------------------------------------------------------------- left
         left = QVBoxLayout()
         left.setContentsMargins(0, 0, 8, 0)
         left.setSpacing(12)
         left.addWidget(field("Event name", self.name, self.name_error))
-        left.addSpacing(4)
+        left.addWidget(separator())
         left.addWidget(label("Destination", "heading"))
         left.addWidget(field("Where photos go", self.destination))
         left.addWidget(self.album_field)
@@ -398,12 +398,12 @@ class EventEditor(QDialog):
         left.addWidget(self.keywords_field)
         left.addWidget(self.hold_row)
         left.addWidget(self.keep_row)
-        left.addSpacing(4)
+        left.addWidget(separator())
         left.addWidget(label("Look", "heading"))
         left.addWidget(toggle_row("Auto white balance", self.auto_wb))
         left.addWidget(self.wb_strength)
         left.addWidget(toggle_row("Auto tone", self.auto_tone))
-        left.addSpacing(4)
+        left.addWidget(separator())
         left.addWidget(label("Watermark", "heading"))
         left.addWidget(toggle_row("Add a watermark", self.watermark))
         picker = QHBoxLayout()
@@ -418,6 +418,7 @@ class EventEditor(QDialog):
         sliders.setSpacing(8)
         sliders.addWidget(self.size)
         sliders.addWidget(self.opacity)
+        sliders.addWidget(self.margin)
         place.addLayout(sliders, 1)
         self.watermark_box = QWidget()
         wm = QVBoxLayout(self.watermark_box)
@@ -427,7 +428,7 @@ class EventEditor(QDialog):
         wm.addWidget(self.watermark_error)
         wm.addLayout(place)
         left.addWidget(self.watermark_box)
-        left.addSpacing(4)
+        left.addWidget(separator())
         left.addWidget(label("Export", "heading"))
         presets = QHBoxLayout()
         presets.setContentsMargins(0, 0, 0, 0)
@@ -453,17 +454,6 @@ class EventEditor(QDialog):
         left.addWidget(self.quality)
         left.addWidget(toggle_row("Limit file size", self.limit_size))
         left.addWidget(self.size_field)
-        left.addSpacing(4)
-        self.more = Button("More", "quiet", icon="chevron-right", icon_token="text-2")
-        self.more.clicked.connect(self._toggle_more)
-        left.addWidget(self.more)
-        self.more_box = QWidget()
-        more = QVBoxLayout(self.more_box)
-        more.setContentsMargins(0, 0, 0, 0)
-        more.setSpacing(12)
-        more.addWidget(self.margin)
-        self.more_box.hide()
-        left.addWidget(self.more_box)
         left.addStretch(1)
         form = QWidget()
         form.setLayout(left)
@@ -635,11 +625,6 @@ class EventEditor(QDialog):
 
     def _destination_changed(self) -> None:
         self.album_picker.set_destination(self.destination.currentData())
-
-    def _toggle_more(self) -> None:
-        opened = self.more_box.isHidden()
-        self.more_box.setVisible(opened)
-        self.more.set_icon("chevron-down" if opened else "chevron-right")
 
     # --------------------------------------------------------------- presets
     def _load_presets(self) -> None:

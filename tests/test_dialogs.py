@@ -182,9 +182,7 @@ def test_m5_position_grid_only_corners_and_center(qtbot, window, bridge, event) 
     assert editor.position.position() == "br"
     editor.position.cells["tl"].click()
     assert editor.position.position() == "tl" and editor.current().watermark_position == "tl"
-    assert editor.more_box.isHidden()  # rarely changed fields start collapsed
-    editor.more.click()
-    assert not editor.more_box.isHidden()
+    assert editor.watermark_box.isAncestorOf(editor.margin)  # margin lives with the watermark
 
 
 def test_fr04_live_preview_renders_off_the_ui_thread_within_500ms(  # type: ignore[no-untyped-def]

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.1 — 2026-11-13
+
+- In the event editor, the watermark margin now sits with the other watermark settings.
+- The "More" section is gone, and thin lines now separate the editor's sections.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.7.0 — 2026-11-13
 
 - While copying from a card, WeFlow shows the speed in MB/s, how many photos are left and
