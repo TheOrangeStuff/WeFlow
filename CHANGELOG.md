@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.8.0 — 2026-11-13
+## 1.8.1 — 2026-11-13
 
 - Picking a SmugMug gallery is simpler: press Choose Gallery… and pick from the list, or
   search it. You can still paste a gallery link there.

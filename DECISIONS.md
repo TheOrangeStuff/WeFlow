@@ -343,7 +343,7 @@ and Opacity under Watermark and the "More" section is removed. Thin separators d
 Destination, Look, Watermark and Export sections. The saved field (`watermark_margin`) is
 unchanged.
 
-## 1.8.0 — Gallery chooser, no Keywords box, zoomable preview, one main panel
+## 1.8.1 — Gallery chooser, no Keywords box, zoomable preview, one main panel
 
 The owner found the gallery dropdown confusing, especially while making a new gallery
 (was the photo going to the new one or the selected one?). The editor now shows the
