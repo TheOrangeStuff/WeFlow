@@ -134,6 +134,7 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.exe
+            dist/*.exe.sha256
           if-no-files-found: error
 
   release:

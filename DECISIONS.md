@@ -129,7 +129,8 @@ owner and accepted on 2026-11-11.
     sends nothing about the user. A newer version is offered in the notice bar with
     **Download** (opens the release page in the browser) and **Skip** (remembers that
     version). The app never downloads or installs by itself: that needs signed builds
-    and an updater framework.
+    and an updater framework. *(1.9.0: on Windows it now does, see the 1.9.0 section and
+    FR-44. macOS still opens the page.)*
     - The offer shows only while the status is idle, and waits behind a card countdown
       or a short message, so it never competes with "safe to remove".
     - A skipped version stays listed as a link beside the version number in Settings.
@@ -369,3 +370,26 @@ The main window's event card and status panel are merged: the event line ("Photo
 status icon is 56 px instead of 20. Switch is still always visible, so UI-05's control
 count is unchanged.
 
+
+## 1.9.0 — Update now on Windows (FR-44)
+
+At the owner's request the Windows app updates itself. It reuses the Inno Setup
+installer, which already upgrades in place because the AppId never changes, so there is no
+separate updater framework.
+
+- The download URL is built from the version (`releases/download/v<ver>/WeFlow-Setup-<ver>.exe`
+  in the public repo), so the update check is unchanged. CI publishes
+  `WeFlow-Setup-<ver>.exe.sha256`, written after signing; a missing or mismatched checksum
+  means nothing is installed. Files go to `<app-data>/updates/`, and earlier ones are removed.
+- The installer runs with `/SILENT` (a progress window, no questions) and `/RELAUNCH=1`,
+  which a `[Code]` check uses to start WeFlow again. `/CURRENTUSER` or `/ALLUSERS` follows
+  where WeFlow is installed now, so an update never makes a second copy.
+- It never starts while a batch is copying, processing or uploading. Photos on hold do
+  not block it. The bar says the update is ready and will install when the photos are done.
+- The app downloads the file itself, so Windows does not mark it as from the internet and
+  SmartScreen does not prompt. Only the HTTPS GitHub download and the checksum guard it;
+  signing the installer is still recommended.
+- macOS keeps **Download**: replacing a running `.app` needs signing, notarisation and
+  a framework such as Sparkle.
+- Versions before 1.9.0 can only offer **Download**, so getting onto 1.9.0 is one last
+  manual install.

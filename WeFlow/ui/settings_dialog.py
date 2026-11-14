@@ -256,7 +256,7 @@ class SettingsDialog(QDialog):
         self.check_now = Button("Check for updates", "text")
         self.check_now.clicked.connect(self._check_now)
         self.update_link = Button("", "link")
-        self.update_link.clicked.connect(bridge.open_update_page)
+        self.update_link.clicked.connect(bridge.get_update)
         self.copy_log = Button("Copy log", icon="copy")
         self.copy_log.setToolTip(
             "Copy recent activity, to paste into a message when asking for help."
@@ -347,5 +347,6 @@ class SettingsDialog(QDialog):
     def _show_update(self) -> None:
         update = self.bridge.update
         self.check_now.setVisible(update is None)
-        self.update_link.setText(f"Download {update.version}" if update else "")
+        verb = "Update to" if self.bridge.can_self_update else "Download"
+        self.update_link.setText(f"{verb} {update.version}" if update else "")
         self.update_link.setVisible(update is not None)

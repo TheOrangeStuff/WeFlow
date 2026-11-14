@@ -191,6 +191,7 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
   - The list loads off the UI thread. If it can't load (not signed in, offline), say why under the field and keep what is saved.
   - Creating a SmugMug gallery from WeFlow is out of scope for now. *(Superseded by FR-41 in 1.6.0.)*
 - **FR-41** *(1.6.0)* Make a new gallery or album from WeFlow, and pick from the list in the first-run wizard too.
+- **FR-44** *(1.9.0)* On Windows, **Update now** downloads the new installer from the public releases repo, checks its SHA-256 against the published `.sha256` file, waits until no batch is copying, processing or uploading, then runs it silently (same install scope) and WeFlow reopens on the new version. Events, settings and sign-ins are untouched. macOS and source runs keep **Download**, which opens the release page.
   - A **+** button next to Reload opens a name box (suggesting the event name) with Create and Cancel.
   - SmugMug: `GET /api/v2!authuser` → `Uris.Node.Uri`, then `POST <node>!children` with `Type: Album`, the name, a `UrlName` built from it and `Privacy: Unlisted`. A 409 (address taken) retries with `-2` … `-5`. The new gallery is picked and shown at the top of the list.
   - Flickr can't hold an empty album, so the title is picked and Flickr makes the album with the first upload, as a typed title always did. No API call.

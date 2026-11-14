@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.0 — 2026-11-14
+
+- On Windows, updating is one click: press Update now and WeFlow downloads the new
+  version, installs it and reopens by itself.
+- It waits until the current photos are copied and uploaded, so an update never
+  interrupts a card.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.8.2 — 2026-11-14
 
 - On Windows, cards in USB card readers that show up as a normal disk are now found.

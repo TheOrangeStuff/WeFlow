@@ -18,7 +18,16 @@ from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QImage
 
 from WeFlow import __version__
-from WeFlow.core import autostart, cards, imaging, naming, secrets, updates, uploaders
+from WeFlow.core import (
+    autostart,
+    cards,
+    imaging,
+    naming,
+    secrets,
+    self_update,
+    updates,
+    uploaders,
+)
 from WeFlow.core.config import (
     DESTINATIONS,
     FILE_NAMING,
@@ -98,6 +107,9 @@ class Bridge(QObject):
     eject_finished = Signal(str, bool, str)  # path, ok, message
     preview_ready = Signal(int, object, object, str)  # token, before, after, error
     update_changed = Signal()
+    # In-app update (FR-44): (state, percent); state is downloading, waiting, installing or failed
+    update_install_changed = Signal(str, int)
+    quit_for_update = Signal()  # the installer is running: quit so it can replace WeFlow
     _deliver = Signal(object, object)
 
     def __init__(
@@ -124,6 +136,8 @@ class Bridge(QObject):
         self._sample: tuple[str, Any] | None = None
         self._sample_lock = threading.Lock()
         self.update: Update | None = None  # a newer published version, once known
+        self.can_self_update = self_update.supported()
+        self.installing_update = False
         self._update_timer = QTimer(self)
         self._update_timer.setInterval(updates.CHECK_EVERY_HOURS * 3_600_000)
         self._update_timer.timeout.connect(self.check_for_updates)
@@ -418,6 +432,66 @@ class Bridge(QObject):
     def open_update_page(self) -> None:
         if self.update is not None:
             self.open_url(self.update.url)
+
+    def get_update(self) -> None:
+        """ "Update now" where WeFlow can update itself, else open the download page."""
+        if self.can_self_update:
+            self.install_update()
+        else:
+            self.open_update_page()
+
+    def install_update(self) -> None:
+        """Download and check the new installer, then run it once nothing is working."""
+        update = self.update
+        if update is None or self.installing_update:
+            return
+        self.installing_update = True
+        self.update_install_changed.emit("downloading", 0)
+        shown = [0]
+
+        def report(percent: int) -> None:
+            if self.installing_update:
+                self.update_install_changed.emit("downloading", percent)
+
+        def progress(done: int, total: int) -> None:  # on the job thread
+            percent = min(99, done * 100 // total) if total else 0
+            if percent != shown[0] and not self._closed:
+                shown[0] = percent
+                self._deliver.emit(report, percent)
+
+        folder = self.store.data_dir / "updates"
+        self.run(
+            lambda: self_update.download(update.version, folder, progress),
+            self._update_downloaded,
+        )
+
+    def _update_downloaded(self, result: Any) -> None:
+        if not isinstance(result, Path):
+            self._update_failed(result)
+            return
+        self._launch_when_idle(result)
+
+    def _launch_when_idle(self, installer: Path) -> None:
+        if self._closed:
+            return
+        if self.has_pending():  # never restart in the middle of a card or an upload
+            self.update_install_changed.emit("waiting", 100)
+            QTimer.singleShot(2000, self, lambda: self._launch_when_idle(installer))
+            return
+        self.update_install_changed.emit("installing", 100)
+
+        def launched(result: Any) -> None:
+            if isinstance(result, Exception):
+                self._update_failed(result)
+            else:
+                self.quit_for_update.emit()
+
+        self.run(lambda: self_update.launch(installer), launched)
+
+    def _update_failed(self, error: Any) -> None:
+        log.info("update not installed: %s", type(error).__name__)
+        self.installing_update = False
+        self.update_install_changed.emit("failed", 0)
 
     # -------------------------------------------------------------- services
     def refresh_services(self) -> None:

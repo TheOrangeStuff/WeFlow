@@ -34,4 +34,8 @@ if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 
 Sign-File "dist\WeFlow-Setup-$version.exe"
+
+# In-app updates check the download against this (FR-44). Written after signing.
+$hash = (Get-FileHash "dist\WeFlow-Setup-$version.exe" -Algorithm SHA256).Hash.ToLower()
+Set-Content -Path "dist\WeFlow-Setup-$version.exe.sha256" -Value "$hash  WeFlow-Setup-$version.exe" -Encoding ascii -NoNewline
 Write-Host "Built dist\WeFlow-Setup-$version.exe"

@@ -176,6 +176,8 @@ class MainWindow(QMainWindow):
         bridge.settings_changed.connect(self.refresh)
         bridge.eject_finished.connect(self._on_eject_finished)
         bridge.update_changed.connect(self.refresh)
+        bridge.update_install_changed.connect(self._on_update_install)
+        bridge.quit_for_update.connect(self.quit_requested)
 
         for batch in bridge.snapshot():
             self._batches[batch.id] = batch
@@ -239,15 +241,37 @@ class MainWindow(QMainWindow):
         """Offer a newer version only while idle, so it never competes with a card."""
         update = self.bridge.update
         answered = (self.bridge.settings.skipped_update, self._update_opened)
-        if update is not None and status == "idle" and update.version not in answered:
-            self.notice_bar.offer_update(update.version)
+        if self.bridge.installing_update:
+            self.notice_bar.withdraw_update()
+        elif update is not None and status == "idle" and update.version not in answered:
+            self.notice_bar.offer_update(
+                update.version, "Update now" if self.bridge.can_self_update else "Download"
+            )
         else:
             self.notice_bar.withdraw_update()
 
     def _download_update(self) -> None:
         if self.bridge.update is not None:
             self._update_opened = self.bridge.update.version
-        self.bridge.open_update_page()
+        self.bridge.get_update()
+        self.refresh()
+
+    def _on_update_install(self, state: str, percent: int) -> None:
+        version = self.bridge.update.version if self.bridge.update else ""
+        if state == "downloading":
+            self.notice_bar.show_progress(f"Downloading WeFlow {version} · {percent}%")
+        elif state == "waiting":
+            self.notice_bar.show_progress(
+                f"WeFlow {version} is ready. It installs when these photos are done."
+            )
+        elif state == "installing":
+            self.notice_bar.show_progress(f"Installing WeFlow {version}. It will reopen by itself.")
+        else:
+            self.notice_bar.show_progress("")
+            self._update_opened = ""  # offer it again
+            self.notice_bar.show_message(
+                "error", "The update could not be downloaded. Try again later."
+            )
         self.refresh()
 
     def _sync_rows(self, batches: list[Batch]) -> None:

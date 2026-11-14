@@ -34,6 +34,8 @@ class NoticeBar(QFrame):
         self._card: tuple[str, str] | None = None
         self._remaining = 0
         self._update = ""  # version on offer
+        self._update_label = "Download"
+        self._progress = ""  # an update being downloaded or installed (FR-44)
         self.icon = Icon("card-sim", "text", 16)
         self.text = label("", "body")
         self.detail = label("", "secondary")
@@ -91,10 +93,17 @@ class NoticeBar(QFrame):
         self.show()
         self._hide.start(self.message_ms)
 
-    def offer_update(self, version: str) -> None:
+    def offer_update(self, version: str, action: str = "Download") -> None:
         """Offer a newer version until it is answered. Waits behind cards and messages."""
-        if version != self._update or not self.offering_update():
+        if version != self._update or action != self._update_label or not self.offering_update():
             self._update = version
+            self._update_label = action
+            self._rest()
+
+    def show_progress(self, text: str) -> None:
+        """An update in progress, e.g. "Downloading WeFlow 1.9.0 · 40%". Empty clears it."""
+        if text != self._progress:
+            self._progress = text
             self._rest()
 
     def withdraw_update(self) -> None:
@@ -108,6 +117,14 @@ class NoticeBar(QFrame):
         """Nothing urgent is showing: fall back to the update offer, or hide."""
         if self._card is not None or self._hide.isActive():
             return
+        if self._progress:
+            self.icon.set_icon("refresh-cw", "text-2")
+            self.text.setText(self._progress)
+            self.detail.setText("")
+            self.action.hide()
+            self.cancel.hide()
+            self.show()
+            return
         if not self._update:
             self.action.hide()
             self.hide()
@@ -115,6 +132,7 @@ class NoticeBar(QFrame):
         self.icon.set_icon(*LEVELS["info"])
         self.text.setText(f"WeFlow {self._update} is available")
         self.detail.setText("")
+        self.action.setText(self._update_label)
         self.action.show()
         self.cancel.setText("Skip")
         self.cancel.setToolTip("Don't offer this version again")

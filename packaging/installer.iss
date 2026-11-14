@@ -37,7 +37,15 @@ Name: "{autodesktop}\WeFlow"; Filename: "{app}\WeFlow.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\WeFlow.exe"; Description: "Start WeFlow"; Flags: nowait postinstall skipifsilent
+; In-app updates (FR-44) run silently with /RELAUNCH=1: start the new version again.
+Filename: "{app}\WeFlow.exe"; Flags: nowait; Check: ShouldRelaunch
 
 [Registry]
 ; Remove the "start at login" entry on uninstall.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "WeFlow"; Flags: dontcreatekey uninsdeletevalue
+
+[Code]
+function ShouldRelaunch: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:RELAUNCH|0}') = '1');
+end;
