@@ -16,6 +16,7 @@ from .main_window import MainWindow
 from .settings_dialog import SettingsDialog
 from .tray import Tray
 from .whats_new import WhatsNew
+from .widgets import busy
 
 
 class App:
@@ -85,6 +86,7 @@ def run(argv: list[str] | None = None) -> int:
     qt.setQuitOnLastWindowClosed(False)
     theme_module.install(qt)
     theme_module.preload_icons()
+    busy.preload()  # decodes the loading loop on a worker thread
     qt.setWindowIcon(QIcon(str(theme_module.ICON_DIR / "app.png")))
 
     data_dir = app_data_dir()

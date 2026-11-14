@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.8 — 2026-11-13
+
+- While a button takes a few seconds, the "Flowing…" cover now shows the We Run
+  Huntsville logo looping instead of a thin bar.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.6.7 — 2026-11-13
 
 - Fixed: on accounts with more than 2000 galleries, the newest galleries were missing

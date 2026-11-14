@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "WeFlow"
-version = "1.6.7"
+version = "1.6.8"
 description = "Card in, photos out: verified copy, auto look, watermark and upload for event photographers."
 requires-python = ">=3.11"
 dependencies = [
@@ -35,7 +35,7 @@ weflow = "WeFlow.__main__:main"
 include = ["WeFlow*"]
 
 [tool.setuptools.package-data]
-WeFlow = ["assets/icons/*"]
+WeFlow = ["assets/icons/*", "assets/loader/*.png", "assets/loader/*.json", "assets/loader/frames/*"]
 
 [tool.ruff]
 line-length = 100

@@ -623,6 +623,8 @@ def test_ui_busy_cover_while_connect_runs(qtbot, window, bridge, monkeypatch) ->
     cover = busy.overlay(row)
     qtbot.waitUntil(cover.isVisible, timeout=3000)
     assert cover.text.text() == "Flowing…" and cover.geometry() == dialog.rect()
+    qtbot.waitUntil(lambda: len(busy.frames.frames) == 60, timeout=5000)
+    assert cover.logo.current() is busy.frames.still  # motion is off in tests
     shoot(dialog, "ui-busy-cover-light")
     release.set()
     qtbot.waitUntil(lambda: not cover.isVisible(), timeout=3000)

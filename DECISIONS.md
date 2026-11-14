@@ -309,3 +309,14 @@ these jobs have no progress to show, so the bar moves without a fixed end. The c
 waits 300 ms before appearing, so quick answers never flicker, and it blocks clicks and
 keys until the job ends. The gallery list loaded when the editor opens stays inline
 ("Loading your galleries…"), so the other fields can be filled in meanwhile.
+
+## 1.6.8 — Looping logo on the "Flowing…" cover
+
+The owner asked for the We Run Huntsville loading loop (60 PNG frames, 2.4 s, 400 × 520
+at 2x) in place of the thin flowing bar. It is the one place outside status where colour
+appears, because it is brand artwork, not a widget colour; the word "Flowing…" stays
+under it. The frames keep their own white panel (rounded corners) in both themes, as the
+kit asks, and shrink to fit short windows. They are decoded once on a worker thread at
+start-up, so the UI thread does no file I/O; until they are ready the cover shows just
+the word. With motion off it shows the kit's still image. Only frames, still and
+manifest ship (6 MB); the kit's GIF, WebP, intro video and sources do not.

@@ -15,6 +15,7 @@ a = Analysis(
     pathex=[str(ROOT)],
     datas=[
         (str(ROOT / "WeFlow" / "assets" / "icons"), "WeFlow/assets/icons"),
+        (str(ROOT / "WeFlow" / "assets" / "loader"), "WeFlow/assets/loader"),
         (str(ROOT / "CHANGELOG.md"), "."),  # read by core/updates.py for "What's new"
     ],
     hiddenimports=[
