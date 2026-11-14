@@ -218,7 +218,7 @@ def test_fr04_pinch_zoom_keeps_the_line_on_the_photo(qtbot, window, bridge, even
         QPointingDevice.primaryPointingDevice(),
         2,
         centre,
-        centre,
+        preview.mapTo(preview.window(), QPoint(int(centre.x()), int(centre.y()))).toPointF(),
         preview.mapToGlobal(QPoint(int(centre.x()), int(centre.y()))).toPointF(),
         1.0,  # zoom in to 2x
         QPointF(),

@@ -321,14 +321,16 @@ class PreviewSplit(QWidget):
         kind = event.type()
         if kind == QEvent.Type.NativeGesture and isinstance(event, QNativeGestureEvent):
             gesture = event.gestureType()
+            # From the screen position: the local one is not filled in alike on every OS.
+            where = self.mapFromGlobal(event.globalPosition())
             if gesture == Qt.NativeGestureType.ZoomNativeGesture:  # trackpad pinch
-                self.zoom_by(1.0 + event.value(), event.position())
+                self.zoom_by(1.0 + event.value(), where)
                 return True
             if gesture == Qt.NativeGestureType.SmartZoomNativeGesture:  # two-finger double tap
                 if self.zoom > 1.0:
                     self.reset_zoom()
                 else:
-                    self.zoom_by(2.0, event.position())
+                    self.zoom_by(2.0, where)
                 return True
         if kind == QEvent.Type.Gesture and isinstance(event, QGestureEvent):
             pinch = event.gesture(Qt.GestureType.PinchGesture)
