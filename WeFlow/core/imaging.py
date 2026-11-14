@@ -1,4 +1,4 @@
-"""Auto white balance, auto tone, resize and watermark (FR-20 – FR-25).
+"""Auto white balance, auto tone and watermark (FR-20 – FR-25).
 
 The colour work is a 256-entry lookup table per channel, measured on a small
 thumbnail and applied to the full image in one pass.
@@ -167,15 +167,12 @@ def apply_watermark(img: Image.Image, mark: Image.Image, profile: Profile) -> No
 
 # -------------------------------------------------------------------- render
 def render(img: Image.Image, profile: Profile, mark: Image.Image | None = None) -> Image.Image:
-    """Apply resize, look and watermark to an upright RGB image."""
-    edge = profile.max_long_edge
-    if edge and max(img.size) > edge:
-        img = img.resize(_fit(img.size, edge), Image.Resampling.LANCZOS)
+    """Apply look and watermark to an upright RGB image, at full size."""
     lut = look_lut(img, profile)
     if lut is not None:
         img = img.point(lut)
     if mark is not None:
-        if lut is None and not (edge and max(img.size) > edge):
+        if lut is None:
             img = img.copy()
         apply_watermark(img, mark, profile)
     return img
@@ -209,9 +206,6 @@ def process_file(
             exif = src.getexif()
             orientation = exif.get(ORIENTATION, 1)
             icc = src.info.get("icc_profile") if src.mode == "RGB" else None
-            edge = profile.max_long_edge
-            if edge and orientation not in _TRANSPOSE:
-                src.draft("RGB", (edge, edge))
             img = src.convert("RGB") if src.mode != "RGB" else src
             if orientation in _TRANSPOSE:
                 img = img.transpose(_TRANSPOSE[orientation])

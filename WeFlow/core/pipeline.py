@@ -14,6 +14,7 @@ import os
 import queue
 import threading
 import time
+from collections import deque
 from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
@@ -102,6 +103,26 @@ class PixelBudget:
                 self._cond.notify_all()
 
 
+class RateMeter:
+    """Bytes per second over the last ``window`` seconds."""
+
+    def __init__(self, window: float) -> None:
+        self._window = window
+        self._start = time.monotonic()
+        self._samples: deque[tuple[float, int]] = deque()
+
+    def add(self, count: int) -> float:
+        now = time.monotonic()
+        self._samples.append((now, count))
+        cut = now - self._window
+        while self._samples and self._samples[0][0] < cut:
+            self._samples.popleft()
+        span = now - max(self._start, cut)
+        if span < 0.25:
+            return 0.0
+        return sum(n for _t, n in self._samples) / span
+
+
 class Pipeline:
     def __init__(
         self,
@@ -123,6 +144,7 @@ class Pipeline:
         self._queued: set[tuple[str, str, str]] = set()
         self._dirty: set[int] = set()
         self._waiting: dict[int, str] = {}
+        self._upload_meters: dict[int, RateMeter] = {}
         self._last_id = 0
         self._paced = False
         self._stopping = threading.Event()
@@ -247,6 +269,7 @@ class Pipeline:
             with self._lock:
                 for batch in state.batches.values():
                     batch.previous_session = True
+                    batch.rate = 0.0
                     self._batches[batch.id] = batch
                     self._last_id = max(self._last_id, batch.id)
                     if batch.state == "copying":  # killed mid-copy: never safe
@@ -453,12 +476,20 @@ class Pipeline:
                 raise ingest.CopyError("The card was removed or could not be read.")
             files = ingest.list_jpegs(source)
             batch.total = len(files)
+            batch.bytes_total = sum(_size(p) for p in files)
             self._touch(batch.id, now=True)
             known = state.hashes()
+            meter = RateMeter(3.0)
+
+            def progress(count: int) -> None:
+                batch.bytes_done += count
+                batch.rate = meter.add(count)
+                self._touch(batch.id)
+
             for path in files:
                 if self._stopping.is_set():
                     return  # stays "copying" on disk; resume() turns it into an error
-                copied = ingest.ingest_file(path, state.originals, folder, known)
+                copied = ingest.ingest_file(path, state.originals, folder, known, progress)
                 if copied is None:
                     batch.skipped += 1
                 else:
@@ -490,10 +521,14 @@ class Pipeline:
             with self._lock:
                 batch.verified = True
                 batch.state = "safe" if batch.is_card else "processing"
+                batch.copy_seconds = time.time() - batch.started
+                batch.rate = 0.0
             state.put_batch(batch)
             state.sync()
             if batch.is_card:
                 self._emit(Notice("safe", f"{batch.label}: {safe_summary(batch)}", batch.id))
+            else:
+                self._emit(Notice("info", f"{batch.label}: {copy_summary(batch)}", batch.id))
         for name in names:
             photo = state.photos.get(name)
             if photo is not None and not photo.held:
@@ -605,9 +640,15 @@ class Pipeline:
         try:
             uploader = self._uploader(batch.destination)
             if not photo.remote_id:  # FR-32: a stored remote_id is never uploaded again
+                with self._lock:
+                    meter = self._upload_meters.setdefault(batch.id, RateMeter(20.0))
+                size = _size(source)
                 photo.remote_id = uploader.upload(source, event)
                 state.put_photo(photo)
                 stage = "album"
+                with self._lock:
+                    batch.upload_bytes += size
+                    batch.rate = meter.add(size)
             uploader.add_to_album(photo.remote_id, event)
         except Exception as caught:
             if isinstance(caught, UploadError):
@@ -659,15 +700,49 @@ class Pipeline:
             log.warning("could not tidy the processed copy of %s", photo.name, exc_info=True)
 
 
+def _size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
 def plural(count: int, word: str = "photo") -> str:
     return f"{count} {word}" if count == 1 else f"{count} {word}s"
 
 
 def safe_summary(batch: Batch) -> str:
-    text = f"safe to remove. {plural(batch.copied)} copied and verified."
+    took = f" in {duration(batch.copy_seconds)}" if batch.copy_seconds >= 1 else ""
+    text = f"safe to remove. {plural(batch.copied)} copied and verified{took}."
     if batch.skipped and not batch.copied:
         text = "safe to remove. Nothing new on this card."
     return text
+
+
+def copy_summary(batch: Batch) -> str:
+    """Said once every file is copied and verified."""
+    if not batch.copied:
+        return "copy done. Nothing new to copy."
+    took = f" in {duration(batch.copy_seconds)}" if batch.copy_seconds >= 1 else ""
+    return f"copy done. {plural(batch.copied)} copied and verified{took}."
+
+
+def duration(seconds: float) -> str:
+    """``8 s``, ``2 min 5 s``, ``1 h 3 min``."""
+    whole = max(0, round(seconds))
+    if whole < 60:
+        return f"{whole} s"
+    minutes, secs = divmod(whole, 60)
+    if minutes < 60:
+        return f"{minutes} min {secs} s" if secs else f"{minutes} min"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours} h {minutes} min" if minutes else f"{hours} h"
+
+
+def speed(rate: float) -> str:
+    """Bytes per second as ``38.2 MB/s``."""
+    mb = rate / 1_000_000
+    return f"{mb:.1f} MB/s" if mb < 100 else f"{mb:.0f} MB/s"
 
 
 def done_summary(batch: Batch) -> str:

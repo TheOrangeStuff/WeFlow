@@ -78,6 +78,11 @@ class Batch:
     started: float = 0.0
     finished: float = 0.0
     previous_session: bool = False
+    bytes_total: int = 0  # 1.7.0: size of the JPEGs on the card
+    bytes_done: int = 0  # bytes read from the card so far
+    upload_bytes: int = 0  # bytes of the photos uploaded so far
+    rate: float = 0.0  # bytes per second of the current copy or upload; 0 = unknown
+    copy_seconds: float = 0.0  # how long the copy took, once verified
 
     @property
     def photos(self) -> int:

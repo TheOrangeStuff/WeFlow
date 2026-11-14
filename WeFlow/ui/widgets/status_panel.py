@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..bridge import Batch, plural, service_name
+from ..bridge import Batch, duration, plural, service_name, speed
 from .common import MOTION_MS, Button, Icon, ThinProgress, label, motion_enabled, restyle
 from .step_tracker import StepTracker
 
@@ -54,6 +54,38 @@ def _fraction(done: int, total: int) -> float:
     return done / total if total else 1.0
 
 
+def copy_line(batch: Batch) -> str:
+    """While copying: ``12 of 25 photos · 13 left · 38.2 MB/s · about 20 s left``."""
+    seen = batch.copied + batch.skipped
+    parts = [f"{seen} of {plural(batch.total)}", f"{batch.total - seen} left"]
+    if batch.rate > 0:
+        parts.append(speed(batch.rate))
+        remaining = batch.bytes_total - batch.bytes_done
+        if remaining > 0:
+            parts.append(f"about {duration(max(1.0, remaining / batch.rate))} left")
+    return " · ".join(parts)
+
+
+def upload_line(batch: Batch) -> str:
+    """While uploading: ``5 of 25 photos · 20 left · 3.1 MB/s · about 1 min left``."""
+    left = batch.copied - batch.uploaded - batch.failed
+    parts = [f"{batch.uploaded} of {plural(batch.copied)}", f"{max(0, left)} left"]
+    if batch.rate > 0:
+        parts.append(speed(batch.rate))
+        if batch.uploaded and left > 0:
+            remaining = left * batch.upload_bytes / batch.uploaded
+            parts.append(f"about {duration(max(1.0, remaining / batch.rate))} left")
+    return " · ".join(parts)
+
+
+def copied_text(batch: Batch) -> str:
+    """Once verified: ``CARD_A · 25 photos copied and verified in 14 s``."""
+    if not batch.copied:
+        return f"{batch.label} · nothing new on this card"
+    took = f" in {duration(batch.copy_seconds)}" if batch.copy_seconds >= 1 else ""
+    return f"{batch.label} · {plural(batch.copied)} copied and verified{took}"
+
+
 def view_for(
     batch: Batch | None, *, event_name: str = "", paused: bool = False, card_present: bool = False
 ) -> PanelView:
@@ -73,7 +105,7 @@ def view_for(
         return PanelView("copy_error", "Don't remove yet — copy failed", reason, **common)
     if batch.state == "copying":
         seen = batch.copied + batch.skipped
-        sub = f"{seen} of {plural(batch.total)}" if batch.total else "Reading the card…"
+        sub = copy_line(batch) if batch.total else "Reading the card…"
         return PanelView(
             "copying", "Copying — keep card in", sub, 0, _fraction(seen, batch.total), **common
         )
@@ -98,15 +130,12 @@ def view_for(
         step = 1 if batch.processed < count else 2
 
     if batch.is_card and card_present:
-        copied = f"{plural(count)} copied and verified" if count else "nothing new on this card"
-        return PanelView(
-            "safe", "Safe to remove", f"{batch.label} · {copied}", step, progress, **common
-        )
+        return PanelView("safe", "Safe to remove", copied_text(batch), step, progress, **common)
     if batch.state in ("safe", "processing"):
-        sub = f"{batch.processed} of {plural(count)}"
+        sub = f"Copy done · {batch.processed} of {plural(count)} processed"
         return PanelView("working", "Processing", sub, step, progress, **common)
     if batch.state == "uploading":
-        sub = f"{batch.uploaded} of {plural(count)}"
+        sub = upload_line(batch)
         if batch.error:
             sub = f"{sub} · {batch.error}"
         return PanelView("working", "Uploading", sub, step, progress, **common)

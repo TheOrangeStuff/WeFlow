@@ -144,14 +144,14 @@ def test_fr23_orientation_exif_and_icc(tmp_path: Path) -> None:
     assert not list(target.parent.glob(".tmp-*"))  # FR-25 atomic write
 
 
-def test_fr24_resize_and_quality(tmp_path: Path) -> None:
+def test_fr24_full_size_and_quality(tmp_path: Path) -> None:
     source = tmp_path / "in.jpg"
     save_photo(source, 4, size=(1200, 800))
     small, big = tmp_path / "small.jpg", tmp_path / "big.jpg"
     imaging.process_file(source, small, Profile(name="s", max_long_edge=600, jpeg_quality=60))
     imaging.process_file(source, big, Profile(name="b", max_long_edge=600, jpeg_quality=100))
     with Image.open(small) as img:
-        assert img.size == (600, 400)
+        assert img.size == (1200, 800)  # 1.7.0: an old resize setting is ignored
     assert small.stat().st_size < big.stat().st_size
     full = tmp_path / "full.jpg"
     imaging.process_file(source, full, PLAIN)

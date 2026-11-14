@@ -383,8 +383,6 @@ class EventEditor(QDialog):
             FILE_SIZE_KB_MIN, FILE_SIZE_KB_MAX, event.file_size_kb, " K", step=50
         )
         self.size_field = field("Limit file size to", self.size_kb)
-        self.resize_edge = number_box(0, 20000, event.max_long_edge, " px", step=100)
-        self.resize_edge.setSpecialValueText("Full size")
         self.margin = SliderRow("Watermark margin", 0, 10, round(event.watermark_margin * 100))
 
         # --------------------------------------------------------------- left
@@ -463,7 +461,6 @@ class EventEditor(QDialog):
         more = QVBoxLayout(self.more_box)
         more.setContentsMargins(0, 0, 0, 0)
         more.setSpacing(12)
-        more.addWidget(field("Resize long edge", self.resize_edge))
         more.addWidget(self.margin)
         self.more_box.hide()
         left.addWidget(self.more_box)
@@ -557,7 +554,6 @@ class EventEditor(QDialog):
         self.size_kb.valueChanged.connect(self._changed)
         self.preset.activated.connect(self._choose_preset)
         self._load_presets()
-        self.resize_edge.valueChanged.connect(self._changed)
         bridge.preview_ready.connect(self._on_preview)
         self._load_watermark_thumb()
         self._changed()
@@ -589,7 +585,7 @@ class EventEditor(QDialog):
             watermark_scale=self.size.value() / 100,
             watermark_opacity=self.opacity.value() / 100,
             watermark_margin=self.margin.value() / 100,
-            max_long_edge=self.resize_edge.value(),
+            max_long_edge=0,  # 1.7.0: resizing removed; photos stay full size
             jpeg_quality=self.quality.value(),
             file_naming=self.naming.currentData(),
             custom_name=self.custom_name.text().strip(),

@@ -70,9 +70,9 @@ def test_ui02_sublines_match_spec() -> None:
 
     assert sub("idle") == "Photos go to Gala"
     assert sub("paused") == "Card watching is off"
-    assert sub("copying") == "100 of 248 photos"
+    assert sub("copying") == "100 of 248 photos · 148 left"
     assert sub("safe") == "EOS_DIGITAL · 248 photos copied and verified"
-    assert sub("working-processing") == "120 of 248 photos"
+    assert sub("working-processing") == "Copy done · 120 of 248 photos processed"
     assert sub("ready") == "248 photos copied. Process and auto-tune them?"
     assert sub("held") == "248 photos tuned. Upload them to SmugMug?"
     assert sub("done") == "248 photos uploaded to SmugMug"
@@ -238,3 +238,15 @@ def test_panel_crossfades_between_states(qtbot, themed, monkeypatch) -> None:  #
 
 def test_card_constant_matches_fixture() -> None:
     assert CARD.startswith("/Volumes/")
+
+
+def test_progress_lines_show_speed_and_files_left() -> None:
+    copying = batch("copying", copied=100, verified=False)
+    copying = replace(copying, bytes_total=248_000_000, bytes_done=100_000_000, rate=20e6)
+    assert view_for(copying).subline == "100 of 248 photos · 148 left · 20.0 MB/s · about 7 s left"
+    uploading = batch("uploading", processed=248, uploaded=48)
+    uploading = replace(uploading, upload_bytes=48_000_000, rate=2e6)
+    sub = view_for(uploading).subline
+    assert sub == "48 of 248 photos · 200 left · 2.0 MB/s · about 1 min 40 s left"
+    safe = replace(batch("processing"), copy_seconds=14.2)
+    assert view_for(safe, card_present=True).subline.endswith("copied and verified in 14 s")

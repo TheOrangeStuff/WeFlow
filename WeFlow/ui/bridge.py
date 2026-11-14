@@ -35,7 +35,7 @@ from WeFlow.core.config import (
 )
 from WeFlow.core.events import BatchUpdated, CardDetected, CardRemoved, Event, Notice
 from WeFlow.core.logs import recent_log, setup_logging
-from WeFlow.core.pipeline import ACTIVE_STATES, Pipeline, plural
+from WeFlow.core.pipeline import ACTIVE_STATES, Pipeline, duration, plural, speed
 from WeFlow.core.state import Batch
 from WeFlow.core.updates import Update
 from WeFlow.core.uploaders import (
@@ -67,9 +67,11 @@ __all__ = [
     "UploadError",
     "app_data_dir",
     "default_library",
+    "duration",
     "plural",
     "service_name",
     "setup_logging",
+    "speed",
 ]
 
 log = logging.getLogger("WeFlow.ui")
@@ -549,8 +551,7 @@ class Bridge(QObject):
         def job() -> tuple[QImage, QImage]:
             before = self._load_sample(sample)
             mark = imaging.load_watermark(event.watermark_path) if event.watermark else None
-            preview = Profile(**{**event.__dict__, "max_long_edge": 0})
-            return _to_qimage(before), _to_qimage(imaging.render(before, preview, mark))
+            return _to_qimage(before), _to_qimage(imaging.render(before, event, mark))
 
         def done(result: Any) -> None:
             if isinstance(result, tuple):

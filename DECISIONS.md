@@ -320,3 +320,17 @@ kit asks, and shrink to fit short windows. They are decoded once on a worker thr
 start-up, so the UI thread does no file I/O; until they are ready the cover shows just
 the word. With motion off it shows the kit's still image. Only frames, still and
 manifest ship (6 MB); the kit's GIF, WebP, intro video and sources do not.
+
+## 1.7.0 — Transfer speed, "copy done", resize removed
+
+The owner asked to drop the "Resize long edge" option (FR-24's optional resize). The field
+is gone from the event editor and processing always keeps full size, so an older event
+that had a size set is no longer shrunk silently. `max_long_edge` stays in the event JSON
+(always 0 when saved) so older and newer versions read the same files.
+
+While copying, the status line shows photos done, photos left, MB/s and time left; while
+uploading, the same from finished uploads (uploaders send whole files, so the speed is
+averaged over the last 20 s of finished photos). The safe line keeps the §7.3 text and
+adds how long the copy took. When the card is out, or for a folder import, "Processing"
+now starts with "Copy done", and a folder import logs a "copy done" notice. Speed fields
+are saved with the batch but reset to 0 on the next launch.

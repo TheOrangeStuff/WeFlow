@@ -76,7 +76,6 @@ def test_m5_edit_event_and_frozen_folder(qtbot, window, bridge, store, event) ->
     editor.auto_wb.setChecked(False)
     editor.wb_strength.slider.setValue(35)
     editor.quality.setValue(80)
-    editor.resize_edge.setValue(2400)
     qtbot.mouseClick(editor.save, Qt.MouseButton.LeftButton)
     saved = store.get(event.id)
     assert saved.name == "Renamed" and saved.folder == "Test-Event"
@@ -86,7 +85,7 @@ def test_m5_edit_event_and_frozen_folder(qtbot, window, bridge, store, event) ->
         True,
     )
     assert (saved.auto_wb, saved.wb_strength) == (False, 0.35)
-    assert (saved.jpeg_quality, saved.max_long_edge) == (80, 2400)
+    assert (saved.jpeg_quality, saved.max_long_edge) == (80, 0)
     assert window.event_card.summary.text() == "SmugMug · Gala · Held"
 
 

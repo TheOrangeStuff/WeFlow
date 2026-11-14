@@ -68,7 +68,10 @@ def hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def copy_verified(source: Path, temp: Path) -> str:
+Progress = Callable[[int], None]  # called with each chunk's size in bytes
+
+
+def copy_verified(source: Path, temp: Path, progress: Progress | None = None) -> str:
     """Copy ``source`` to ``temp``, hashing as it goes; fsync; re-hash the copy.
 
     Returns the SHA-256. On a mismatch the temp file is deleted and
@@ -81,6 +84,8 @@ def copy_verified(source: Path, temp: Path) -> str:
                 hashing = _hasher.submit(digest.update, chunk)  # hash while writing
                 dst.write(chunk)
                 hashing.result()
+                if progress is not None:
+                    progress(len(chunk))
             dst.flush()
             os.fsync(dst.fileno())
         if hash_file(temp) != digest.hexdigest():
@@ -116,7 +121,11 @@ def target_name(folder: str, captured: datetime, stem: str, taken: Callable[[str
 
 
 def ingest_file(
-    source: Path, originals: Path, folder: str, known_hashes: set[str]
+    source: Path,
+    originals: Path,
+    folder: str,
+    known_hashes: set[str],
+    progress: Progress | None = None,
 ) -> Copied | None:
     """Copy and verify one photo into ``originals``.
 
@@ -127,7 +136,7 @@ def ingest_file(
     temp = originals / f".tmp-{os.getpid()}-{source.name}"
     try:
         mtime = source.stat().st_mtime
-        sha = copy_verified(source, temp)
+        sha = copy_verified(source, temp, progress)
     except CopyError:
         raise
     except OSError as exc:

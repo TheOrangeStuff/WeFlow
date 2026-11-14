@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.0 — 2026-11-13
+
+- While copying from a card, WeFlow shows the speed in MB/s, how many photos are left and
+  about how long it will take.
+- Uploads to SmugMug or Flickr show the same: speed, photos left and time left.
+- When the copy is done, WeFlow says so and how long it took, even after you take the
+  card out or when importing a folder.
+- The "Resize long edge" option is gone. Photos are always kept at full size.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.6.8 — 2026-11-13
 
 - While a button takes a few seconds, the "Flowing…" cover now shows the We Run
