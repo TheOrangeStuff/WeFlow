@@ -141,6 +141,7 @@ class Pipeline:
         self._states: dict[str, EventState] = {}
         self._batches: dict[int, Batch] = {}
         self._uploaders: dict[str, Uploader] = {}
+        self._sorted: dict[int, int] = {}  # batch id -> photos up at its last sort
         self._queued: set[tuple[str, str, str]] = set()
         self._dirty: set[int] = set()
         self._waiting: dict[int, str] = {}
@@ -680,7 +681,35 @@ class Pipeline:
         with self._lock:
             self._waiting.pop(batch.id, None)
         self._touch(batch.id)
+        self._sort_when_settled(uploader, event, state, batch)
         return None
+
+    def _sort_when_settled(
+        self, uploader: Uploader, event: Profile, state: EventState, batch: Batch
+    ) -> None:
+        """Once nothing in the batch is left to upload, sort its album once (FR-31a).
+        A failed sort never fails a photo: they are already up."""
+        photos = state.batch_photos(batch.id)
+        if any(p.status in ("copied", "processed") and not p.held for p in photos):
+            return
+        uploaded = sum(p.status == "uploaded" for p in photos)
+        with self._lock:  # two upload workers can finish together: sort only once
+            if self._sorted.get(batch.id) == uploaded:
+                return
+            self._sorted[batch.id] = uploaded
+        try:
+            uploader.sort_album(event)
+        except Exception as exc:
+            message = exc.message if isinstance(exc, UploadError) else type(exc).__name__
+            log.warning("sorting the album for batch %s failed: %s", batch.id, message)
+            self._emit(
+                Notice(
+                    "info",
+                    f"{batch.label}: photos are up, but the album could not be sorted. "
+                    "It will be sorted after the next card.",
+                    batch.id,
+                )
+            )
 
     @staticmethod
     def _settle_output(event: Profile, state: EventState, photo: PhotoRecord) -> None:

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.0 — 2026-11-15
+
+- Flickr albums are now sorted by date taken, oldest first, once each card's photos are up.
+- The whole album is sorted, including photos that were already in it.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.10.1 — 2026-11-15
 
 - A new main screen: three big stages, Transfer, Process and Upload. Each fills up while it

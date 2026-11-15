@@ -183,6 +183,10 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
 - **FR-31** Flickr: authorize with `flickrapi`, `perms=write`.
   - Upload with privacy flags and quoted tags.
   - Add each photo to the album with the event's title, creating the album (`photosets.create`) the first time.
+- **FR-31a** *(1.11.0)* Flickr albums are sorted by date taken, oldest first, matching the website's "Sort › Date taken › Oldest first".
+  - Flickr's API can't set an album's sort option, so once a batch has nothing left to upload, WeFlow reads the whole album (`photosets.getPhotos`, `extras=date_taken`) and applies the order with `photosets.reorderPhotos`. Photos already in the album are sorted too; equal dates keep their order.
+  - Once per batch, not per photo. No call if the album is already in order.
+  - A failed sort never fails a photo; a notice says the album will be sorted after the next card. SmugMug galleries are left as they are.
 - **FR-32** Upload and add-to-album are separate steps. A photo with a `remote_id` is **never uploaded again**; only the album step is retried.
 - **FR-33** Temporary errors (network, 5xx, 429) retry after 10, 20, 40, 60, 120, then every 300 s, up to 12 attempts.
   - Permanent errors (401/403, bad album, auth) fail at once with a plain-language message.

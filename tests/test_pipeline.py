@@ -150,6 +150,34 @@ def test_fr32_album_retry_never_uploads_again(
     assert sorted(fake.album_adds) == sorted(f"fake-{n}" for n in fake.uploads)
 
 
+def test_fr31a_album_sorted_once_when_batch_is_up(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    event = flickr_event(store)
+    fake = FakeUploader()
+    pipeline = make_pipeline(fake)
+    batch = pipeline.submit(card, event, "CARD_A", is_card=True)
+    recorder.wait_state(batch.id, "done")
+    deadline = time.time() + 5
+    while not fake.sorts and time.time() < deadline:
+        time.sleep(0.01)
+    time.sleep(0.2)
+    assert fake.sorts == ["Gala Night"]
+
+
+def test_fr31a_failed_sort_never_fails_photos(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    class SortFails(FakeUploader):
+        def sort_album(self, event: Profile) -> None:
+            raise UploadError("Flickr is busy. WeFlow will keep trying.")
+
+    event = flickr_event(store)
+    batch = make_pipeline(SortFails()).submit(card, event, "CARD_A", is_card=True)
+    done = recorder.wait_state(batch.id, "done")
+    assert done.uploaded == NEW_PHOTOS and done.failed == 0
+
+
 def test_fr33_retry_schedule() -> None:
     assert [retry_delay(n) for n in range(1, 9)] == [10, 20, 40, 60, 120, 300, 300, 300]
     assert MAX_ATTEMPTS == 12

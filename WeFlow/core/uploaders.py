@@ -76,6 +76,10 @@ class Uploader(Protocol):
         """Make a new gallery or album called ``name`` and return it (FR-41)."""
         ...
 
+    def sort_album(self, event: Profile) -> None:
+        """Put the event's album in date-taken order, oldest first (FR-31a). Safe to repeat."""
+        ...
+
 
 def service_name(destination: str) -> str:
     return SERVICE_NAMES.get(destination, destination)
@@ -512,6 +516,9 @@ class SmugMugUploader:
             "That name is taken on SmugMug. Choose another name, or pick it from the list.", True
         )
 
+    def sort_album(self, event: Profile) -> None:
+        """SmugMug galleries keep their own sort setting; WeFlow leaves it alone."""
+
 
 # -------------------------------------------------------------------- Flickr
 FLICKR_PRIVACY_FLAGS = {
@@ -676,6 +683,37 @@ class FlickrUploader:
             raise UploadError("Enter a name for the new album.", True)
         return AlbumChoice(title, title)
 
+    def sort_album(self, event: Profile) -> None:
+        """Flickr's API can't turn on an album's "date taken" sort, so put every photo
+        in the album in date-taken order, oldest first, with ``reorderPhotos`` (FR-31a)."""
+        title = event.album.strip()
+        if not title:
+            return
+        client = _flickr_client(with_token=True)
+        with self._lock:
+            try:
+                album_id = self._albums.get(title) or self._find_album(client, title)
+                if not album_id:
+                    return  # nothing reached the album yet
+                self._albums[title] = album_id
+                found: list[tuple[str, str]] = []
+                page = 1
+                while True:
+                    listing = client.photosets.getPhotos(
+                        photoset_id=album_id, extras="date_taken", per_page=500, page=page
+                    )["photoset"]
+                    for photo in listing.get("photo", []):
+                        found.append((str(photo.get("datetaken") or ""), str(photo["id"])))
+                    if page >= int(listing.get("pages", 1) or 1):
+                        break
+                    page += 1
+                order = [pid for _, pid in sorted(found, key=lambda item: item[0])]  # stable
+                if order == [pid for _, pid in found]:
+                    return  # already in order
+                client.photosets.reorderPhotos(photoset_id=album_id, photo_ids=",".join(order))
+            except Exception as exc:
+                raise _flickr_error(exc) from exc
+
     @staticmethod
     def _find_album(client: Any, title: str) -> str:
         page = 1
@@ -713,6 +751,7 @@ class FakeUploader:
         self.permanent = permanent
         self.uploads: list[str] = []
         self.album_adds: list[str] = []
+        self.sorts: list[str] = []
         self.upload_calls = 0
         self.album_calls = 0
         self._lock = threading.Lock()
@@ -746,6 +785,10 @@ class FakeUploader:
         self.created.append(choice.name)
         self.albums.insert(0, choice)  # newest first
         return choice
+
+    def sort_album(self, event: Profile) -> None:
+        with self._lock:
+            self.sorts.append(event.album)
 
 
 def make_uploader(destination: str) -> Uploader:

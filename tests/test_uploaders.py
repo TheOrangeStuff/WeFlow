@@ -195,6 +195,53 @@ def test_fr31_flickr_upload_then_album_created_once(
     assert client.calls[3][1] == {"photoset_id": "set-1", "photo_id": "556"}
 
 
+class SortingFlickr(FakeFlickr):
+    """An existing album, two pages of photos out of date order."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.sets = [{"id": "set-9", "title": {"_content": "Gala Night"}}]
+        self.pages = [
+            [
+                {"id": "3", "datetaken": "2026-11-15 20:00:00"},
+                {"id": "1", "datetaken": "2026-11-15 18:00:00"},
+            ],
+            [
+                {"id": "2", "datetaken": "2026-11-15 19:00:00"},
+                {"id": "4", "datetaken": "2026-11-15 18:00:00"},
+            ],
+        ]
+
+    def getPhotos(self, **kwargs: Any) -> dict[str, Any]:  # noqa: N802
+        self.calls.append(("getPhotos", kwargs))
+        page = kwargs["page"]
+        return {"photoset": {"pages": len(self.pages), "photo": self.pages[page - 1]}}
+
+    def reorderPhotos(self, **kwargs: Any) -> dict[str, Any]:  # noqa: N802
+        self.calls.append(("reorderPhotos", kwargs))
+        return {"stat": "ok"}
+
+
+def test_fr31a_flickr_sorts_whole_album_date_taken_oldest_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = SortingFlickr()
+    monkeypatch.setattr(uploaders, "_flickr_client", lambda with_token: client)
+    uploaders.FlickrUploader().sort_album(Profile(name="G", album="Gala Night"))
+    assert client.calls[1][1]["extras"] == "date_taken"
+    name, args = client.calls[-1]
+    # Ties keep the album's order (1 before 4).
+    assert name == "reorderPhotos" and args == {"photoset_id": "set-9", "photo_ids": "1,4,2,3"}
+
+
+def test_fr31a_flickr_sort_skips_album_already_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = SortingFlickr()
+    client.pages = [[{"id": "1", "datetaken": "2026-01-01 00:00:00"}]]
+    monkeypatch.setattr(uploaders, "_flickr_client", lambda with_token: client)
+    uploaders.FlickrUploader().sort_album(Profile(name="G", album="Gala Night"))
+    assert "reorderPhotos" not in [name for name, _ in client.calls]
+
+
 def test_fake_uploader_contract(tmp_path: Path) -> None:
     photo = tmp_path / "a.jpg"
     photo.write_bytes(b"x")

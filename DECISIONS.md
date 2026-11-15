@@ -394,6 +394,22 @@ separate updater framework.
 - Versions before 1.9.0 can only offer **Download**, so getting onto 1.9.0 is one last
   manual install.
 
+## 1.11.0 — Flickr albums sorted by date taken (FR-31a)
+
+- **Sorting is a fixed order, not Flickr's sort setting.** Flickr's public API has no call
+  for an album's "Sort by date taken" option; it's website-only. WeFlow applies the same
+  order with `photosets.reorderPhotos` instead (the owner agreed). Photos added later on
+  the website won't slot in until WeFlow next sorts that album.
+- **Once per batch** (the owner's choice), when nothing in the batch is left to upload.
+  Two upload workers can finish together, so the pipeline remembers how many photos were
+  up at the batch's last sort and skips a repeat. A later Retry that gets more photos up
+  sorts again.
+- **The whole album is sorted**, including photos that were in it before (the owner's
+  choice). Equal or missing dates keep the album's existing order.
+- **A failed sort is not retried on its own.** The photos are already up, and the next
+  batch for that album sorts it anyway. One notice says so.
+- **SmugMug is unchanged** (the owner's choice): `sort_album` is a no-op there.
+
 ## 1.10.1 — Three stages on the main screen, auto-eject, camera file names, Shadows
 
 1.10.0 was tagged but never shipped: its Windows tests showed the event editor could still
