@@ -5,8 +5,8 @@ from .card_row import CardRow
 from .chip import Chip
 from .common import Button, Icon, ModeSwitch, ThinProgress, Toggle, label
 from .event_card import EventCard
+from .stages import StageStrip, StageView, stages_for
 from .status_panel import PanelView, StatusPanel, view_for
-from .step_tracker import StepTracker
 
 __all__ = [
     "ActivityDrawer",
@@ -18,9 +18,11 @@ __all__ = [
     "ModeSwitch",
     "PanelView",
     "StatusPanel",
-    "StepTracker",
+    "StageStrip",
+    "StageView",
     "ThinProgress",
     "Toggle",
     "label",
+    "stages_for",
     "view_for",
 ]

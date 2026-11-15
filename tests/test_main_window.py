@@ -55,7 +55,7 @@ def test_m4_fake_card_inserted_safe_then_done(  # type: ignore[no-untyped-def]
     assert window.panel.headline.text() == "Safe to remove"
     assert window.panel.subline.text() == "CARD_A · 7 photos copied and verified"
     assert window.panel.visible_buttons() == ["Eject"]
-    assert window.panel.tracker.isVisible()
+    assert window.panel.stages.states()[0] == "done"
 
     # Processing and upload carry on behind the Safe panel.
     qtbot.waitUntil(lambda: len(fake_uploader.album_adds) == NEW_PHOTOS, timeout=15000)
@@ -156,6 +156,45 @@ def test_fr16_eject_reports_result(qtbot, window, bridge, event, tmp_path, monke
     assert window.drawer.entries[0][1:] == ("error", failure)
 
 
+def test_auto_eject_once_copy_is_verified(
+    qtbot, window, bridge, event, tmp_path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    """1.10.0: with "Eject the card when it's copied" on, the card ejects itself once,
+    and only after every file is verified. Off by default."""
+    from WeFlow.core import cards
+
+    calls: list[object] = []
+
+    def eject(path: object) -> tuple[bool, str]:
+        calls.append(str(path))
+        return True, "Card ejected."
+
+    monkeypatch.setattr(cards, "eject", eject)
+    card = str(insert_card(tmp_path))
+    fields = {"event_id": event.id, "source": card, "label": "CARD_A", "copied": 7}
+
+    assert bridge.settings.auto_eject is False
+    window._cards[card] = "CARD_A"
+    bridge.batch_updated.emit(batch("copying", verified=False, **fields))
+    bridge.batch_updated.emit(batch("safe", **fields))
+    qtbot.wait(50)
+    assert calls == []  # the setting is off
+
+    bridge.update_settings(auto_eject=True)
+    fields.update(id=2001, started=9e9)
+    bridge.batch_updated.emit(batch("copying", verified=False, **fields))
+    qtbot.wait(20)
+    assert calls == []  # never before the copy is verified
+    with qtbot.waitSignal(bridge.eject_finished, timeout=3000):
+        bridge.batch_updated.emit(batch("safe", **fields))
+    assert calls == [card]
+    assert window.panel.stages.views()[0].note == "Ejected"
+    window._cards[card] = "CARD_A"
+    bridge.batch_updated.emit(batch("processing", processed=3, **fields))
+    qtbot.wait(50)
+    assert calls == [card]  # once only
+
+
 def test_fr34_held_panel_release(
     qtbot, window, bridge, store, event, tmp_path, fake_uploader
 ) -> None:  # type: ignore[no-untyped-def]
@@ -234,8 +273,8 @@ def test_ui05_at_most_four_always_visible_controls(qtbot, window) -> None:  # ty
     assert names == ["Pause", "Settings", "Switch event"]
     assert window.mode.isVisible()  # the fourth: Auto/Paced (DECISIONS 52)
     assert not window.earlier_label.isVisible() and not window.activity.isVisible()
-    assert (window.width(), window.height()) == (560, 720)
-    assert (window.minimumWidth(), window.minimumHeight()) == (480, 600)
+    assert (window.width(), window.height()) == (560, 760)
+    assert (window.minimumWidth(), window.minimumHeight()) == (480, 640)
 
 
 def test_earlier_cards_newest_first_and_previous_sessions_hidden(  # type: ignore[no-untyped-def]
@@ -255,7 +294,7 @@ def test_earlier_cards_newest_first_and_previous_sessions_hidden(  # type: ignor
     labels = [row.batch.label for row in rows]
     assert labels == [f"CARD_{i}" for i in range(6, -1, -1)] + ["OLD_STUCK"]  # newest first
     assert "OLD" not in labels  # done in an earlier session
-    assert window.earlier.height() == 5 * 44  # five rows show, the rest scroll
+    assert window.earlier.height() == 3 * 44  # three rows show, the rest scroll
     assert window.panel.view.batch_id == 107
 
 

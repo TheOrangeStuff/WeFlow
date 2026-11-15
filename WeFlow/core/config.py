@@ -26,6 +26,7 @@ FILE_NAMING = (
     "import",
     "custom_seq",
     "custom",
+    "custom_filename",  # 1.10.0
     "date_filename",
     "filename",
     "filename_seq",
@@ -102,6 +103,7 @@ class Settings:
     check_updates: bool = True
     skipped_update: str = ""
     seen_version: str = ""  # the version whose "What's new" was last shown
+    auto_eject: bool = False  # 1.10.0: eject a card once it is copied and verified
 
 
 @dataclass
@@ -119,6 +121,7 @@ class Profile:
     auto_wb: bool = True
     wb_strength: float = 0.6
     auto_tone: bool = True
+    shadows: float = 0.0  # 1.10.0: -1 deepens, +1 lifts
     watermark: bool = False
     watermark_path: str = ""
     watermark_position: str = "br"

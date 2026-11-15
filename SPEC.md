@@ -93,12 +93,13 @@ Fields carry over from v0.1 `Profile`, with these changes:
 | `keywords` | str | `""` | comma-separated |
 | `auto_wb` / `wb_strength` | bool / float 0–1 | true / 0.6 | |
 | `auto_tone` | bool | true | |
+| `shadows` | float −1…1 | 0 | *(1.10.0)* Lift (+) or deepen (−) the shadows (FR-21a) |
 | `watermark` + `watermark_path/position/scale/opacity/margin` | | as v0.1 | |
 | `max_long_edge` | int | 0 | 0 = full size |
 | `jpeg_quality` | int 0–100 | 92 | Lightroom's range (1.2.0; was 60–100) |
 | `hold_uploads` | bool | false | |
 | `keep_processed` | bool | false | *(1.5.0)* Keep processed copies after upload (FR-40) |
-| `file_naming` | `"import" \| "custom_seq" \| "custom" \| "date_filename" \| "filename" \| "filename_seq"` | `"import"` | FR-26 (1.2.0) |
+| `file_naming` | `"import" \| "custom_seq" \| "custom" \| "custom_filename" \| "date_filename" \| "filename" \| "filename_seq"` | `"import"` | FR-26 (1.2.0) |
 | `custom_name` | str | `""` | Empty = event name |
 | `start_number` | int ≥ 0 | 1 | First sequence number |
 | `limit_file_size` / `file_size_kb` | bool / int 10–100000 | false / 500 | FR-27; K = 1000 bytes |
@@ -145,26 +146,30 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
   - If no event is active, show the event switcher instead and start once one is chosen.
 - **FR-12** Copy each JPEG (`.jpg` / `.jpeg`, any case; skip dotfiles and `._*`) to a temp file while hashing it with SHA-256, then `fsync`.
   - Re-hash the copy. On a mismatch, delete the temp file and mark the batch `error`.
-- **FR-13** Rename each file to `<folder>_<YYYYMMDD-HHMMSS>_<original stem>.jpg`, using EXIF DateTimeOriginal (falling back to the file's modified time). Add `_2`, `_3`… on collision.
+- **FR-13** *(1.10.0)* Keep each file's name exactly as it is on the card (`IMG_0001.JPG`). Add `_2`, `_3`… before the extension only when the event already has that name. The capture date (EXIF DateTimeOriginal, falling back to the file's modified time) is still read and stored on the record.
+  - Before 1.10.0 originals were named `<folder>_<YYYYMMDD-HHMMSS>_<original stem>.jpg`; those files are left as they are.
 - **FR-14** Skip any photo whose checksum is already recorded for the event, and count it as "already imported".
 - **FR-15** Move the batch to `safe` only after every file is copied and verified. A batch in `error` must never show as safe.
 - **FR-16** The Eject action calls `diskutil eject` on macOS and the Shell.Application Eject verb on Windows.
   - Report success or failure in the UI.
+  - *(1.10.0)* Settings › "Eject the card when it's copied" (`Settings.auto_eject`, default off) ejects the card by itself once the batch is verified (never earlier, and only once per batch). If the eject fails, the UI says the card is safe to remove and asks the user to eject it.
 - **FR-17** **Never** open card files for writing. Never rename, move or delete anything on a card. Enforce with a test that runs ingest against a read-only fixture.
 - **FR-18** "Import folder…" runs the same pipeline on any folder.
 
 ### 5.3 Processing
 - **FR-20** Auto white balance: gray-world on mid-tones with saturated pixels excluded (v0.1 `wb_gains`).
-  - Gains are blended toward 1.0 by the strength setting and clamped to [0.75, 1.35].
+  - *(1.10.0)* Saturation is judged after a first gray-world pass (clamped to the gain limits), so a strong cast such as tungsten light still finds its neutral pixels.
+  - Gains are blended toward 1.0 by the strength setting and clamped to [0.7, 1.6].
 - **FR-21** Auto tone: luminance percentiles 0.3 / 99.7 set the black and white points (black ≤ 0.12, white ≥ 0.80).
   - A gamma correction moves the median 60% of the way toward 0.46, clamped to [0.72, 1.35].
+- **FR-21a** *(1.10.0)* Shadows slider (−100…+100, default 0): the curve `v + k·v·(1−v)²` after auto tone, with `k = 1.5·amount` to lift and `0.6·amount` to deepen, so it never folds. Applies whether or not auto tone is on.
 - **FR-22** Watermark: the PNG is scaled to `scale × short edge` and placed at one of 5 positions with a margin, at the set opacity.
   - It must look identical on portrait and landscape photos.
 - **FR-23** Apply EXIF orientation before the watermark, then write orientation = 1.
   - Preserve the rest of the EXIF data, and the ICC profile when the source is RGB.
 - **FR-24** Optional resize (Lanczos) and per-event JPEG quality.
 - **FR-25** Writes are atomic: write to `.tmp-<name>`, then rename. Run `min(4, cpu_count // 2)` processing workers.
-- **FR-26** *(1.2.0)* Processed copies are named by the event's File naming rule, Lightroom-style: Import name (FR-13, the default), Custom name - Sequence, Custom name, Date - Filename, Filename, Filename - Sequence.
+- **FR-26** *(1.2.0)* Processed copies are named by the event's File naming rule, Lightroom-style: Import name (FR-13, the default), Custom name - Sequence, Custom name, Custom name - Filename *(1.10.0)*, Date - Filename, Filename, Filename - Sequence.
   - Sequence numbers have 4 digits, count from the start number, and follow import order within the event. "Filename" is the card's file name; "Date" is the capture date `YYYYMMDD`.
   - Names are made safe on both OSes. A taken name gets `-2`, `-3`…
   - The name is fixed the first time a photo is processed and stored on its record. Changing the rule later never renames a photo that has a name, so uploads and retries always find the file. Originals are never renamed by this rule.
@@ -242,41 +247,52 @@ Acceptance test for the design: from about 2 m away, someone can tell (a) which 
 
 ### 7.2 Main window: the working face
 
-Default size 560×720; minimum 480×600. One column, 24 px outer padding. From top to bottom:
+Default size 560×760; minimum 480×640 *(1.10.0; was 560×720 / 480×600)*. One column, 24 px outer padding. From top to bottom:
 
 | # | Element | Spec |
 |---|---|---|
 | 1 | **Top bar** (48 px) | App name left (`type-heading`). Right: an "Auto ◯ Paced" switch (FR-38), Pause/Resume toggle (icon + label) and a Settings gear icon button. **No other always-visible controls (UI-05).** |
 | 2 | **Event card** | `surface-2` background, radius 12, padding 16. Line 1: event name (`type-title`). Line 2 (`type-secondary`): destination · album · "Watermark" · "Held" (only those that apply). Right side: "Switch ▾" text button that opens a popover list of events + "New event…" + "Edit this event…". (UI-01) |
 | 3 | **Status panel** — takes the remaining vertical space above the list | States below (§7.3). Radius 16, padding 24. (UI-02, UI-03) |
-| 4 | **Earlier cards** list | Header `type-label` "Earlier cards". Rows 44 px: `Card label · N photos` left; status chip right; contextual action (Retry / Release / Open folder) as a text button left of the chip, **only when applicable** (UI-04, UI-06). Newest first. Rows from previous app sessions are hidden after they reach `done`. Max 5 visible, then the list scrolls. |
+| 4 | **Earlier cards** list | Header `type-label` "Earlier cards". Rows 44 px: `Card label · N photos` left; status chip right; contextual action (Retry / Release / Open folder) as a text button left of the chip, **only when applicable** (UI-04, UI-06). Newest first. Rows from previous app sessions are hidden after they reach `done`. Max 3 visible *(1.10.0; was 5)*, then the list scrolls. |
 | 5 | **Activity drawer** handle | Bottom, 32 px, "Activity ›" in `type-secondary`. Opens a 320 px drawer with the log from the right edge (UI-07). Errors also appear as row state; the log is never the only place an error shows. |
 
 ### 7.3 Status panel states
 
 | State | Background | Headline (`type-display`, 28 pt) | Subline | Extras |
 |---|---|---|---|---|
-| Idle | `surface-2` | "Insert a card" | "Photos go to <event>" | Small card icon |
+| Idle | `surface-2` | "Insert a card" | "Photos go to <event>" | Stages all pending |
 | Paused | `surface-2` | "Paused" | "Card watching is off" | Resume button |
-| Copying | `warn-tint` | "Copying — keep card in" | "<n> of <total> photos" | Tracker on step 1, progress bar |
-| **Safe** | `good-tint` + 2 px `good` border | "**Safe to remove**" | "<label> · <n> photos copied and verified" | **Eject** button (outline, `good`); tracker continues (Process/Upload) |
-| Working (no card in) | `surface-2` | "Processing" / "Uploading" | "<n> of <total>" | Tracker + progress bar |
-| Ready (Paced) | `good-tint` + 2 px `good` border | "Safe to remove" (card in) / "Copied and verified" | "<n> photos copied. Process and auto-tune them?" | **Process** (primary), Eject while the card is in; tracker on Process |
+| Copying | `warn-tint` | "Copying — keep card in" | "<n> of <total> photos" | Transfer active |
+| **Safe** | `good-tint` + 2 px `good` border | "**Safe to remove**" | "<label> · <n> photos copied and verified" | **Eject** button (outline, `good`); stages continue (Process/Upload) |
+| Working (no card in) | `surface-2` | "Processing" / "Uploading" | "<n> of <total>" | Process or Upload active |
+| Ready (Paced) | `good-tint` + 2 px `good` border | "Safe to remove" (card in) / "Copied and verified" | "<n> photos copied. Process and auto-tune them?" | **Process** (primary), Eject while the card is in; Process waiting |
 | Held | `warn-tint` | "Ready to upload" | "<n> photos tuned. Upload them to <destination>?" | **Upload** (primary) and "Open folder" |
 | Done | `good-tint` | "All done" | "<n> photos uploaded to <destination>" | Fades to Idle after 10 s |
 | Attention | `bad-tint` + 2 px `bad` border | "Needs attention" | One-line reason | **Retry** (primary), "Details" opens the drawer |
 | Copy error | `bad-tint` | "Don't remove yet — copy failed" | Reason + "Re-insert the card to try again" | Retry |
 
-The panel shows the most recent batch. The **4-step tracker** (Copy · Process · Upload · Done) is a row of 18 px circles joined by a 1 px line. Each step is drawn as done (filled `good`), current (2 px `good` ring) or pending (1 px `border` ring). Labels sit under the circles in `type-label`. The progress bar under the tracker is 4 px high and fully rounded.
+The headline and subline follow the most recent batch. *(1.10.0)* Under them sit **three stages** in columns — **Transfer · Process · Upload** — split by faint 1 px `border` separators. Each stage is a 28 px line icon (card, sliders, cloud-upload) in a 64 px ring, with the stage name in capitals (`type-heading`), a stats line (`type-secondary`, e.g. "120 / 248 · 38.2 MB/s"), a status word in the status colour and the card's label (`type-label`) underneath. The stage states are:
+
+| Stage state | Ring | Word (examples) |
+|---|---|---|
+| Pending | 3 px `border` ring, dimmed icon | — |
+| Active | `warn` arc that fills with progress (a quarter arc goes round while the total is unknown), plus a soft halo that breathes outwards | "Keep card in", "Tuning", "Uploading" |
+| Waiting (Paced / Held) | full `warn` ring | "Press Process", "Press Upload" |
+| Done | filled `good` circle with a tick that pops in (240 ms) | "Safe to remove", "Ejected", "Verified", "Done", "<service>" |
+| Error | `bad` ring with a ✕ | "Copy failed", "Needs attention" |
+| Off | dashed `border` ring | "Library only" (event has no destination) |
+
+Transfer follows the newest batch. Process and Upload also follow it, except that a stage the newest batch has not reached yet shows an earlier batch that is in that stage right now, so a new card can copy while the one before it uploads. The motion stops when nothing is active, and is off when `WeFlow_NO_MOTION` is set.
 
 **State transitions crossfade over 200 ms.** No spinners where a progress bar can be shown.
 
 ### 7.4 Secondary screens
 
-- **Event editor** — a sheet (macOS) or dialog (Windows), 640 px wide.
+- **Event editor** — a sheet (macOS) or dialog (Windows), about 640 px wide. *(1.10.0)* It is resizable, never narrower than its settings column needs (at least 320 px, so toggles are never cut off at large text sizes), and never bigger than the screen.
   - Left column holds 4 groups, each with a heading:
     - **Destination:** where, album (*1.8.1:* a Choose Gallery… button that opens a list of the user's galleries, FR-39, with Create a gallery… at the top, FR-41), privacy, hold toggle.
-    - **Look:** auto WB with strength slider, auto tone.
+    - **Look:** auto WB with strength slider, auto tone, *(1.10.0)* Shadows slider (FR-21a).
     - **Watermark:** toggle, file picker with thumbnail, position as a 3×3 grid picker (corners + center only enabled), size slider, opacity slider.
     - **Export** *(1.2.0)*: preset picker (Save as preset… / Delete preset), file naming, custom text and start number (only when the rule uses them), an example file name, quality slider, Limit file size toggle and size.
   - Rarely changed fields (resize, margin) sit in a collapsed "More" section.
@@ -287,6 +303,7 @@ The panel shows the most recent batch. The **4-step tracker** (Copy · Process �
   - SmugMug and Flickr rows, each showing Connected/Not connected, a Connect/Reconnect button and a "Disconnect" link.
   - API key fields stay hidden until the user clicks "Use my own API key…".
   - Card-detected sound on/off.
+  - *(1.10.0)* "Eject the card when it's copied" on/off (default off, FR-16).
   - Start at login on/off (Should).
 - **First run:** 3 steps in one window — library folder → connect a service (skippable) → create the first event. Then the main window opens.
 - **Tray / menu-bar icon** with 4 states (idle, working, safe, attention). Its menu: Show WeFlow, Pause watching, Quit.

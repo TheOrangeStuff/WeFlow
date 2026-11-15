@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.10.0 — 2026-11-15
+
+- A new main screen: three big stages, Transfer, Process and Upload. Each fills up while it
+  works and turns into a green tick when it is done.
+- A new card can copy while the card before it is still uploading. Each stage shows which card it is on.
+- New setting: "Eject the card when it's copied". It is off unless you turn it on.
+- Photos copied from a card now keep the camera's file name, for example IMG_0001.JPG.
+  Photos you imported before keep their names.
+- New Shadows slider in the event's Look settings brightens or deepens the dark parts.
+- New file naming choice: Custom name - Filename.
+- The white balance Strength slider now works on photos taken under strong indoor light.
+- The event window no longer cuts off its switches at larger text sizes, and you can resize it.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.9.0 — 2026-11-14
 
 - On Windows, updating is one click: press Update now and WeFlow downloads the new

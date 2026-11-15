@@ -1,6 +1,6 @@
 """File names for processed copies, Lightroom-style (custom name, sequence, date, filename).
 
-Originals keep their import name (FR-13). A processed copy's name is worked out once,
+Originals keep the camera's file name (FR-13; 1.10.0). A processed copy's name is worked out once,
 when the photo is first processed, and stored on its record (``PhotoRecord.output``).
 """
 
@@ -10,13 +10,14 @@ import re
 from collections.abc import Callable
 from datetime import datetime
 
-from .config import Profile, slugify
+from .config import Profile
 
 SEQUENCE_DIGITS = 4
 _FORBIDDEN = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
 _SPACES = re.compile(r"\s+")
 _RESERVED = {"CON", "PRN", "AUX", "NUL"} | {f"{p}{n}" for p in ("COM", "LPT") for n in range(1, 10)}
-# The import name is "<folder>_<YYYYMMDD-HHMMSS>_<stem>.jpg"; folders never contain "_".
+# Before 1.10.0 the import name was "<folder>_<YYYYMMDD-HHMMSS>_<stem>.jpg"; folders never
+# contain "_". Older records still carry it.
 _IMPORT_NAME = re.compile(r"^[^_]+_\d{8}-\d{6}_(?P<stem>.+)$")
 
 
@@ -52,6 +53,8 @@ def output_stem(event: Profile, import_name: str, original: str, captured: str, 
         return f"{custom}-{sequence(event, seq)}"
     if naming == "custom":
         return custom
+    if naming == "custom_filename":
+        return f"{custom}-{filename}"
     if naming == "date_filename":
         try:
             day = datetime.fromisoformat(captured).strftime("%Y%m%d")
@@ -76,5 +79,5 @@ def unique_name(stem: str, taken: Callable[[str], bool]) -> str:
 
 def example(event: Profile) -> str:
     """What the first photo of ``event`` would be called, for the editor."""
-    sample = f"{event.folder or slugify(event.name)}_20261111-143000_DSC_0001.jpg"
+    sample = "DSC_0001.jpg"
     return f"{output_stem(event, sample, 'DSC_0001', '2026-11-11T14:30:00', 1)}.jpg"

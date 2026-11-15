@@ -9,7 +9,7 @@ import pytest
 from tests.ui_states import CARD, EXPECTED_PANEL, PANEL_STATES, batch
 from WeFlow.core.config import Profile
 from WeFlow.ui.theme import theme
-from WeFlow.ui.widgets import CardRow, Chip, EventCard, StatusPanel, StepTracker, Toggle, view_for
+from WeFlow.ui.widgets import CardRow, Chip, EventCard, StatusPanel, Toggle, stages_for, view_for
 from WeFlow.ui.widgets.activity_drawer import WIDTH, ActivityDrawer
 from WeFlow.ui.widgets.event_card import event_summary
 from WeFlow.ui.widgets.status_panel import LOOKS
@@ -57,9 +57,10 @@ def test_ui02_status_panel_state(qtbot, themed, name: str) -> None:  # type: ign
     assert panel.visible_buttons() == BUTTONS.get(name, [])
     shown = [b.text() for b in panel._all_buttons if b.isVisible()]
     assert sorted(shown) == sorted(BUTTONS.get(name, []))
-    # Tracker and progress only where there is progress to show.
-    assert panel.tracker.isVisible() == (view.step >= 0)
-    assert panel.progress.isVisible() == (view.progress is not None)
+    # The three stages are always there; colour always comes with a word.
+    assert panel.stages.isVisible()
+    for stage in panel.stages.views():
+        assert stage.state in ("pending", "off") or stage.note
     assert len(view.subline) > 0
 
 
@@ -100,15 +101,49 @@ def test_safe_tracker_continues_through_process_and_upload() -> None:
     assert view_for(batch("copying", verified=False), card_present=True).step == 0
 
 
-def test_step_tracker_states(qtbot, themed) -> None:  # type: ignore[no-untyped-def]
-    tracker = StepTracker()
-    qtbot.addWidget(tracker)
-    tracker.set_current(2)
-    assert [tracker.step_state(i) for i in range(4)] == ["done", "done", "current", "pending"]
-    tracker.set_current(4)
-    assert {tracker.step_state(i) for i in range(4)} == {"done"}
-    tracker.resize(400, 44)
-    assert not tracker.grab().isNull()
+def test_ui02_three_stages_follow_the_batch(qtbot, themed) -> None:  # type: ignore[no-untyped-def]
+    def states(sample, **kw) -> list[str]:  # type: ignore[no-untyped-def]
+        return [v.state for v in stages_for(sample, **kw)]
+
+    assert states(None) == ["pending"] * 3
+    copying = batch("copying", copied=100, verified=False)
+    assert states(copying) == ["active", "pending", "pending"]
+    assert stages_for(copying)[0].note == "Keep card in"
+    assert states(batch("error", verified=False)) == ["error", "pending", "pending"]
+    assert states(batch("ready", ready=248)) == ["done", "waiting", "pending"]
+    assert states(batch("processing", processed=3)) == ["done", "active", "pending"]
+    assert states(batch("held", processed=248, held=248)) == ["done", "done", "waiting"]
+    assert states(batch("uploading", processed=248, uploaded=9)) == ["done", "done", "active"]
+    done = batch("done", processed=248, uploaded=248)
+    assert states(done) == ["done"] * 3
+    assert states(replace(done, destination="none")) == ["done", "done", "off"]
+    # Transfer says whether the card can come out.
+    assert stages_for(done, card_in=True)[0].note == "Safe to remove"
+    assert stages_for(done, ejected=True)[0].note == "Ejected"
+    # A new card copies while the previous one still uploads (each stage names its card).
+    older = replace(batch("uploading", processed=248, uploaded=9), label="CARD_A")
+    newer = replace(copying, label="CARD_B")
+    views = stages_for(newer, newer, older)  # the main window picks these (see below)
+    assert [v.state for v in views] == ["active", "pending", "active"]
+    assert (views[0].card, views[2].card) == ("CARD_B", "CARD_A")
+
+
+def test_ui02_stage_strip_paints_and_animates_only_while_working(
+    qtbot, themed, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    from WeFlow.ui.widgets.stages import StageStrip
+
+    monkeypatch.delenv("WeFlow_NO_MOTION", raising=False)
+    strip = StageStrip()
+    qtbot.addWidget(strip)
+    strip.resize(480, strip.height())
+    strip.show()
+    strip.set_views(stages_for(batch("uploading", processed=248, uploaded=9)))
+    assert strip.animating()
+    assert not strip.grab().isNull()
+    strip.set_views(stages_for(batch("done", processed=248, uploaded=248)))
+    assert not strip.animating()
+    assert strip.states() == ["done"] * 3
 
 
 def test_chip_pairs_colour_with_icon_and_word(qtbot, themed) -> None:  # type: ignore[no-untyped-def]

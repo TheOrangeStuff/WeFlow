@@ -393,3 +393,43 @@ separate updater framework.
   a framework such as Sparkle.
 - Versions before 1.9.0 can only offer **Download**, so getting onto 1.9.0 is one last
   manual install.
+
+## 1.10.0 — Three stages on the main screen, auto-eject, camera file names, Shadows
+
+At the owner's request:
+
+- **Three stages replace the 4-step tracker and progress bar** (§7.3). Transfer, Process
+  and Upload sit in columns, each a big icon in a ring that fills while it works and turns
+  into a green tick when done. The icons are 28 px, larger than the 16/20 px icon rule,
+  because they are the main thing to read from across the room. The headline stays, so
+  the 2 m test ("can the card come out?") still has a sentence to answer it. "Done" is no
+  longer a separate step: three ticks mean done.
+- **Each stage can show a different card** (the owner's choice). A stage only borrows an
+  earlier card when the newest card has not reached it yet. That way an error or a waiting
+  step on the newest card is never hidden behind another card's progress.
+- **Motion:** one shared 1.6 s clock drives a breathing halo and the progress arc. It runs
+  only while a stage is active and stops when nothing is working. A quarter arc goes round
+  only while the total is unknown ("Reading the card…"), so the "no spinners where a
+  progress bar can be shown" rule still holds.
+- **Window:** default height 720 → 760, minimum 600 → 640, and "Earlier cards" shows 3
+  rows before scrolling (was 5), so the stages fit at the minimum size.
+- **Auto-eject** is a setting, off by default (the owner's choice). It runs once per batch,
+  only after the batch is verified, and only while WeFlow still sees the card. If it fails,
+  the message says the card is safe to remove and asks the user to eject it, because the
+  copy is already safe.
+- **Originals keep the camera's file name**, extension case included (`IMG_0001.JPG`).
+  Collisions get `_2`, `_3` before the extension, as before. The capture date is still read
+  and stored, so "Date - Filename" naming is unchanged. Files imported earlier keep their
+  old names, and `naming.original_stem` still understands them. With the default "Import
+  name" rule, processed copies now carry the camera name too.
+- **Shadows** is a per-event slider from −100 to +100 (`Profile.shadows`, −1…1, default
+  0). It is not part of export presets, because presets never hold look settings (FR-28).
+- **The white-balance slider seemed to do nothing** under strong indoor light. Every
+  neutral pixel looked too saturated, so no pixels qualified and the gains stayed at 1.0.
+  Saturation is now judged after a first clamped gray-world pass, and the gain limits widen
+  from [0.75, 1.35] to [0.7, 1.6] so tungsten can be corrected. A clearly coloured subject
+  (a red wall) is still not treated as a cast.
+- **Event editor width:** the settings column was fixed at 304 px. At larger Windows text
+  sizes the rows grew wider than that and the toggles were cut off (the right-arrow key
+  scrolled them into view). The column now sizes to its widest row (at least 320 px), long
+  toggle captions wrap, and the dialog is resizable but never bigger than the screen.

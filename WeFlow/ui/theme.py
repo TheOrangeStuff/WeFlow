@@ -164,6 +164,7 @@ QFrame#Card {{ background: {t["surface"]}; border: 1px solid {t["border"]};
 QFrame#NoticeBar {{ background: {t["surface"]}; border: 1px solid {t["border"]};
     border-radius: {RADIUS_CARD}px; }}
 QFrame#Drawer {{ background: {t["surface"]}; border-left: 1px solid {t["border"]}; }}
+QFrame#StageSeparator {{ background: {t["border"]}; border: none; }}
 QFrame#Separator {{ background: {t["border"]}; max-height: 1px; min-height: 1px; border: none; }}
 {panel_rules}
 {chip_rules}

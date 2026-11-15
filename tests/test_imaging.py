@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -40,7 +41,7 @@ def test_fr20_auto_wb_shifts_channel_means_toward_neutral() -> None:
 
 
 def test_fr20_gains_blend_by_strength_and_clamp() -> None:
-    pixels = np.tile(np.array([[0.72, 0.5, 0.37]], dtype=np.float32), (4000, 1))
+    pixels = np.tile(np.array([[0.8, 0.5, 0.3]], dtype=np.float32), (4000, 1))
     full = imaging.wb_gains(pixels, 1.0)
     half = imaging.wb_gains(pixels, 0.5)
     assert imaging.wb_gains(pixels, 0.0) == (1.0, 1.0, 1.0)
@@ -49,6 +50,32 @@ def test_fr20_gains_blend_by_strength_and_clamp() -> None:
     assert 1.0 < half[2] <= full[2] and full[0] < half[0] < 1.0
     vivid = np.tile(np.array([[1.0, 0.0, 0.0]], dtype=np.float32), (4000, 1))
     assert imaging.wb_gains(vivid, 1.0) == (1.0, 1.0, 1.0)  # saturated pixels are excluded
+    red_wall = np.tile(np.array([[0.8, 0.1, 0.1]], dtype=np.float32), (4000, 1))
+    assert imaging.wb_gains(red_wall, 1.0) == (1.0, 1.0, 1.0)  # a red subject is not a cast
+
+
+def test_fr20_strong_tungsten_cast_is_still_corrected() -> None:
+    """1.10.0: under strong indoor light every neutral looks saturated; the slider must
+    still have something to scale."""
+    rng = np.random.default_rng(2)
+    grey = rng.uniform(0.3, 0.8, (20000, 1)) * np.ones((1, 3))
+    tungsten = np.clip(grey * np.array([1.0, 0.75, 0.45]), 0, 1).astype(np.float32)
+    full = imaging.wb_gains(tungsten, 1.0)
+    half = imaging.wb_gains(tungsten, 0.5)
+    assert full[0] < 0.9 and full[2] > 1.4
+    assert full[2] > half[2] > 1.0
+
+
+def test_shadows_lift_and_deepen_dark_tones_only() -> None:
+    ramp = np.linspace(0, 1, 256, dtype=np.float32)
+    up, down = imaging.shadow_curve(ramp, 1.0), imaging.shadow_curve(ramp, -1.0)
+    assert up[0] == 0 and up[-1] == pytest.approx(1.0) and down[0] == 0
+    assert up[85] > ramp[85] + 0.15 and down[85] < ramp[85] - 0.05
+    assert abs(up[240] - ramp[240]) < 0.01
+    assert np.all(np.diff(up) >= 0) and np.all(np.diff(down) >= 0)  # never folds
+    flat = Profile(name="s", auto_wb=False, auto_tone=False)
+    assert imaging.look_lut(synthetic_photo(1), flat) is None
+    assert imaging.look_lut(synthetic_photo(1), replace(flat, shadows=0.5)) is not None
 
 
 def test_fr21_tone_params_limits_and_median_pull() -> None:

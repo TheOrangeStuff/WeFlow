@@ -28,10 +28,11 @@ Reserve = Callable[[int], AbstractContextManager[None]]
 
 ORIENTATION = 0x0112
 LUMA = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
-GAIN_MIN, GAIN_MAX = 0.75, 1.35
+GAIN_MIN, GAIN_MAX = 0.7, 1.6
 GAMMA_MIN, GAMMA_MAX = 0.72, 1.35
 BLACK_MAX, WHITE_MIN = 0.12, 0.80
 MEDIAN_TARGET, MEDIAN_PULL = 0.46, 0.6
+SHADOW_LIFT, SHADOW_DEEPEN = 1.5, 0.6  # curve strength at +100 and -100
 ANALYSIS_EDGE = 256
 _TRANSPOSE = {
     2: Image.Transpose.FLIP_LEFT_RIGHT,
@@ -49,21 +50,32 @@ class ProcessError(Exception):
 
 
 # ------------------------------------------------------------------ analysis
+def _gray_world(pixels: Floats) -> Floats:
+    means = pixels.mean(axis=0)
+    gains: Floats = float(means.mean()) / np.maximum(means, 1e-6)
+    return gains
+
+
 def wb_gains(pixels: Floats, strength: float = 1.0) -> tuple[float, float, float]:
     """Gray-world gains from mid-tone, low-saturation pixels (FR-20).
 
-    ``pixels`` is an (N, 3) array in 0..1. Gains are blended toward 1.0 by
-    ``strength`` and clamped to [0.75, 1.35].
+    ``pixels`` is an (N, 3) array in 0..1. Saturation is judged after a first, clamped
+    gray-world pass, so a strong cast (tungsten light) still finds its neutral pixels.
+    Gains are blended toward 1.0 by ``strength`` and clamped to [GAIN_MIN, GAIN_MAX].
     """
     luma = pixels @ LUMA
-    high = pixels.max(axis=1)
-    low = pixels.min(axis=1)
-    saturation = (high - low) / np.maximum(high, 1e-6)
-    mask = (luma > 0.2) & (luma < 0.8) & (saturation < 0.5) & (high < 0.98)
-    if int(mask.sum()) < max(50, pixels.shape[0] // 50):
+    candidate = (luma > 0.2) & (luma < 0.8) & (pixels.max(axis=1) < 0.98)
+    enough = max(50, pixels.shape[0] // 50)
+    if int(candidate.sum()) < enough:
         return (1.0, 1.0, 1.0)
-    means = pixels[mask].mean(axis=0)
-    gains = float(means.mean()) / np.maximum(means, 1e-6)
+    rough = np.clip(_gray_world(pixels[candidate]), GAIN_MIN, GAIN_MAX)
+    balanced = pixels * rough
+    high = balanced.max(axis=1)
+    saturation = (high - balanced.min(axis=1)) / np.maximum(high, 1e-6)
+    mask = candidate & (saturation < 0.5)
+    if int(mask.sum()) < enough:
+        return (1.0, 1.0, 1.0)
+    gains = _gray_world(pixels[mask])
     strength = min(1.0, max(0.0, strength))
     r, g, b = (min(GAIN_MAX, max(GAIN_MIN, 1.0 + (float(gain) - 1.0) * strength)) for gain in gains)
     return (r, g, b)
@@ -80,21 +92,39 @@ def tone_params(luma: Floats) -> tuple[float, float, float]:
     return black, white, min(GAMMA_MAX, max(GAMMA_MIN, gamma))
 
 
+def shadow_curve(values: Floats, amount: float) -> Floats:
+    """Lift (``amount`` > 0) or deepen (< 0) the shadows; ``amount`` is -1..1.
+
+    ``v + k·v·(1-v)²`` peaks at a third of the way up and leaves black, white and the
+    highlights almost untouched. ``k`` is kept small enough that the curve never folds.
+    """
+    amount = min(1.0, max(-1.0, amount))
+    k = amount * (SHADOW_LIFT if amount > 0 else SHADOW_DEEPEN)
+    curved: Floats = np.clip(values + k * values * (1.0 - values) ** 2, 0.0, 1.0)
+    return curved
+
+
 def build_lut(
-    gains: tuple[float, float, float], black: float, white: float, gamma: float
+    gains: tuple[float, float, float],
+    black: float,
+    white: float,
+    gamma: float,
+    shadows: float = 0.0,
 ) -> list[int]:
     ramp = np.arange(256, dtype=np.float32) / 255.0
     table: list[int] = []
     for gain in gains:
         values = np.clip(ramp * gain, 0.0, 1.0)
         values = np.clip((values - black) / (white - black), 0.0, 1.0) ** gamma
+        if shadows:
+            values = shadow_curve(values, shadows)
         table.extend(int(v) for v in np.rint(values * 255.0))
     return table
 
 
 def look_lut(img: Image.Image, profile: Profile) -> list[int] | None:
     """The lookup table for this image and event, or ``None`` when nothing changes."""
-    if not (profile.auto_wb or profile.auto_tone):
+    if not (profile.auto_wb or profile.auto_tone or profile.shadows):
         return None
     thumb = img.copy() if max(img.size) <= ANALYSIS_EDGE else img.resize(_fit(img.size))
     pixels = (np.asarray(thumb, dtype=np.float32) / 255.0).reshape(-1, 3)
@@ -103,7 +133,7 @@ def look_lut(img: Image.Image, profile: Profile) -> list[int] | None:
     if profile.auto_tone:
         balanced = np.clip(pixels * np.array(gains, dtype=np.float32), 0.0, 1.0)
         black, white, gamma = tone_params(balanced @ LUMA)
-    return build_lut(gains, black, white, gamma)
+    return build_lut(gains, black, white, gamma, profile.shadows)
 
 
 def _fit(size: tuple[int, int], edge: int = ANALYSIS_EDGE) -> tuple[int, int]:

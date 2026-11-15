@@ -21,6 +21,8 @@ def test_fr26_each_naming_pattern() -> None:
     assert stem(file_naming="custom_seq") == "Smith-Wedding-0003"  # event name by default
     assert stem(file_naming="custom_seq", custom_name="Gala", start_number=100) == "Gala-0102"
     assert stem(file_naming="custom", custom_name="Gala Night") == "Gala-Night"
+    assert stem(file_naming="custom_filename", custom_name="Gala") == "Gala-DSC_0042"
+    assert stem(file_naming="custom_filename") == "Smith-Wedding-DSC_0042"
     assert stem(file_naming="date_filename") == "20261111-DSC_0042"
     assert stem(file_naming="filename") == "DSC_0042"
     assert stem(file_naming="filename_seq", start_number=0) == "DSC_0042-0002"
@@ -48,4 +50,4 @@ def test_fr26_collisions_get_a_number() -> None:
 def test_fr26_example_for_the_editor() -> None:
     event = Profile(name="Smith Wedding", file_naming="custom_seq")
     assert naming.example(event) == "Smith-Wedding-0001.jpg"
-    assert naming.example(Profile(name="Gala")) == "Gala_20261111-143000_DSC_0001.jpg"
+    assert naming.example(Profile(name="Gala")) == "DSC_0001.jpg"

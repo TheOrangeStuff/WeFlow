@@ -1,4 +1,4 @@
-"""Settings: library folder, SmugMug / Flickr connections, sound, start at login (§7.4)."""
+"""Settings: library, SmugMug / Flickr, sound, auto-eject, start at login (§7.4)."""
 
 from __future__ import annotations
 
@@ -247,6 +247,10 @@ class SettingsDialog(QDialog):
         self.sound = Toggle(bridge.settings.card_sound)
         self.sound.setAccessibleName("Card-detected sound")
         self.sound.toggled.connect(lambda on: bridge.update_settings(card_sound=on))
+        self.eject = Toggle(bridge.settings.auto_eject)
+        self.eject.setAccessibleName("Eject the card when it's copied")
+        self.eject.setToolTip("Once every photo is copied and checked, WeFlow ejects the card.")
+        self.eject.toggled.connect(lambda on: bridge.update_settings(auto_eject=on))
         self.login = Toggle(bridge.settings.start_at_login)
         self.login.setAccessibleName("Start at login")
         self.login.toggled.connect(bridge.set_start_at_login)
@@ -281,6 +285,7 @@ class SettingsDialog(QDialog):
         column.addWidget(separator())
         for caption, toggle in (
             ("Play a sound when a card is detected", self.sound),
+            ("Eject the card when it's copied", self.eject),
             ("Start WeFlow at login", self.login),
             ("Check for new versions", self.updates),
         ):

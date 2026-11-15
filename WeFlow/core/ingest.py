@@ -110,14 +110,17 @@ def captured_at(photo: Path, fallback_mtime: float) -> datetime:
     return datetime.fromtimestamp(fallback_mtime)
 
 
-def target_name(folder: str, captured: datetime, stem: str, taken: Callable[[str], bool]) -> str:
-    """``<folder>_<YYYYMMDD-HHMMSS>_<stem>.jpg`` with ``_2``, ``_3``… on collision."""
-    base = f"{folder}_{captured:%Y%m%d-%H%M%S}_{stem}"
-    name, n = f"{base}.jpg", 2
-    while taken(name):
-        name = f"{base}_{n}.jpg"
+def target_name(name: str, taken: Callable[[str], bool]) -> str:
+    """The camera's own file name, unchanged; ``_2``, ``_3``… before the extension
+    only when that name is already in the event (FR-13, 1.10.0)."""
+    stem, dot, ext = name.rpartition(".")
+    if not dot:
+        stem, ext = name, ""
+    candidate, n = name, 2
+    while taken(candidate):
+        candidate = f"{stem}_{n}{dot}{ext}"
         n += 1
-    return name
+    return candidate
 
 
 def ingest_file(
@@ -148,7 +151,7 @@ def ingest_file(
             temp.unlink()
             return None
         captured = captured_at(temp, mtime)
-        name = target_name(folder, captured, source.stem, lambda n: (originals / n).exists())
+        name = target_name(source.name, lambda n: (originals / n).exists())
         os.utime(temp, (mtime, mtime))
         os.replace(temp, originals / name)
     except OSError as exc:

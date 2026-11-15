@@ -53,12 +53,12 @@ def test_fr12_checksum_mismatch_deletes_temp_and_raises(
     assert list(originals.iterdir()) == []
 
 
-def test_fr13_rename_uses_exif_date_then_mtime(card: Path, tmp_path: Path) -> None:
+def test_fr13_original_keeps_camera_name_and_reads_date(card: Path, tmp_path: Path) -> None:
     originals = tmp_path / "lib" / "originals"
     folder = card / "DCIM" / "100TEST"
     copied = ingest.ingest_file(folder / "IMG_0001.JPG", originals, "Gala", set())
     assert copied is not None
-    assert copied.name == "Gala_20260516-183007_IMG_0001.jpg"
+    assert copied.name == "IMG_0001.JPG"
     assert copied.captured == "2026-05-16T18:30:07"
 
     plain = tmp_path / "noexif.jpg"
@@ -68,7 +68,8 @@ def test_fr13_rename_uses_exif_date_then_mtime(card: Path, tmp_path: Path) -> No
     when = datetime(2025, 1, 2, 3, 4, 5).timestamp()
     os.utime(plain, (when, when))
     fallback = ingest.ingest_file(plain, originals, "Gala", set())
-    assert fallback is not None and fallback.name == "Gala_20250102-030405_noexif.jpg"
+    assert fallback is not None and fallback.name == "noexif.jpg"
+    assert fallback.captured == "2025-01-02T03:04:05"
 
 
 def test_fr13_collisions_get_numbered(tmp_path: Path) -> None:
@@ -80,8 +81,7 @@ def test_fr13_collisions_get_numbered(tmp_path: Path) -> None:
         copied = ingest.ingest_file(tmp_path / sub / "IMG_0001.jpg", originals, "Gala", set())
         assert copied is not None
         names.append(copied.name)
-    base = "Gala_20260516-183007_IMG_0001"
-    assert names == [f"{base}.jpg", f"{base}_2.jpg", f"{base}_3.jpg"]
+    assert names == ["IMG_0001.jpg", "IMG_0001_2.jpg", "IMG_0001_3.jpg"]
 
 
 def test_fr14_known_checksum_is_skipped(card: Path, tmp_path: Path) -> None:

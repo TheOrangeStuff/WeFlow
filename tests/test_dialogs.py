@@ -543,7 +543,7 @@ def test_fr26_fr27_export_fields_show_only_when_they_apply(
     editor.show()
     assert editor.naming.currentData() == "import"
     assert not editor.custom_field.isVisible() and not editor.start_field.isVisible()
-    assert editor.example.text() == "Example: Test-Event_20261111-143000_DSC_0001.jpg"
+    assert editor.example.text() == "Example: DSC_0001.jpg"
     editor.naming.setCurrentIndex(editor.naming.findData("custom_seq"))
     assert editor.custom_field.isVisible() and editor.start_field.isVisible()
     assert editor.custom_name.placeholderText() == "Test Event"
@@ -686,3 +686,21 @@ def test_fr39_click_gallery_box_opens_the_chooser(
     editor.album_picker.chooser.reject()
     assert editor.album.text() == ""  # Cancel changes nothing
     assert "down-arrow { image: url(" in build_qss(theme.t, "/x/chevron.svg")
+
+
+def test_editor_form_is_never_cut_off(qtbot, window, bridge, event) -> None:  # type: ignore[no-untyped-def]
+    """1.10.0: at large text sizes the toggles sat past the right edge of the form."""
+    from PySide6.QtGui import QFont
+
+    event.destination, event.watermark, event.limit_file_size = "flickr", True, True
+    bridge.save_event(event)
+    editor = EventEditor(bridge, bridge.active(), window)
+    qtbot.addWidget(editor)
+    big = QFont(editor.font())
+    big.setPixelSize(22)
+    editor.setFont(big)
+    editor.show()
+    qtbot.wait(20)
+    form = editor._form_scroll.widget()
+    assert form.width() <= editor._form_scroll.viewport().width()
+    assert editor.shadows.isVisible()

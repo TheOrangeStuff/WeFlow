@@ -1,8 +1,12 @@
-"""The status panel: the one thing to read from across the room (SPEC §7.3)."""
+"""The status panel: the one thing to read from across the room (SPEC §7.3).
+
+1.10.0: the small 4-step tracker and progress bar became three big stages (Transfer,
+Process, Upload) in ``stages.py``. The headline still says the one thing that matters.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 
 from PySide6.QtCore import QPropertyAnimation, Qt, Signal
 from PySide6.QtWidgets import (
@@ -16,8 +20,8 @@ from PySide6.QtWidgets import (
 )
 
 from ..bridge import Batch, duration, plural, service_name, speed
-from .common import MOTION_MS, Button, Icon, ThinProgress, label, motion_enabled, restyle
-from .step_tracker import StepTracker
+from .common import MOTION_MS, Button, label, motion_enabled, restyle
+from .stages import IDLE_STAGES, StageStrip, StageView, stages_for
 
 # state -> (panel tone, icon, icon colour token)
 LOOKS = {
@@ -33,7 +37,6 @@ LOOKS = {
     "copy_error": ("bad", "triangle-alert", "bad-strong"),
 }
 STATES = tuple(LOOKS)
-ICON_SIZE = 56
 
 
 @dataclass(frozen=True)
@@ -43,12 +46,13 @@ class PanelView:
     state: str = "idle"
     headline: str = "Insert a card"
     subline: str = ""
-    step: int = -1  # tracker position; -1 hides the tracker
-    progress: float | None = None  # None hides the bar
+    step: int = -1  # furthest stage reached (0 copy … 3 done); -1 = no batch
+    progress: float | None = None  # of the current step, when it is working
     batch_id: int | None = None
     event_id: str = ""
     source: str = ""
     card: bool = False  # the card is still in, so Eject applies
+    stages: tuple[StageView, StageView, StageView] = field(default=IDLE_STAGES)
 
 
 def _fraction(done: int, total: int) -> float:
@@ -90,7 +94,18 @@ def copied_text(batch: Batch) -> str:
 def view_for(
     batch: Batch | None, *, event_name: str = "", paused: bool = False, card_present: bool = False
 ) -> PanelView:
-    """Map the most recent batch (or none) to what the panel should show."""
+    """Map the most recent batch (or none) to what the panel should show. All three
+    stages follow this batch; the main window points them at other cards when needed."""
+    view = _headline_for(batch, event_name=event_name, paused=paused, card_present=card_present)
+    if batch is None:
+        return view
+    stages = stages_for(batch, card_in=batch.is_card and card_present)
+    return replace(view, stages=stages)
+
+
+def _headline_for(
+    batch: Batch | None, *, event_name: str = "", paused: bool = False, card_present: bool = False
+) -> PanelView:
     if batch is None:
         if paused:
             return PanelView("paused", "Paused", "Card watching is off")
@@ -176,11 +191,11 @@ class StatusPanel(QFrame):
         self._fade: QLabel | None = None
         self._fade_anim: QPropertyAnimation | None = None
 
-        self.icon = Icon("card-sim", "text-2", ICON_SIZE)
         self.headline = label("", "display", wrap=True)
         self.subline = label("", "body", wrap=True)
-        self.tracker = StepTracker()
-        self.progress = ThinProgress()
+        for text in (self.headline, self.subline):
+            text.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.stages = StageStrip()
 
         self.eject = Button("Eject", "good", icon="eject", icon_token="good-strong")
         self.open_folder = Button("Open folder", "outline")
@@ -215,16 +230,9 @@ class StatusPanel(QFrame):
             "copy_error": (self.retry,),
         }
 
-        self._track_box = QWidget()
-        track = QVBoxLayout(self._track_box)
-        track.setContentsMargins(0, 24, 0, 0)
-        track.setSpacing(12)
-        track.addWidget(self.tracker)
-        track.addWidget(self.progress)
-
         self._button_box = QWidget()
         button_row = QHBoxLayout(self._button_box)
-        button_row.setContentsMargins(0, 24, 0, 0)
+        button_row.setContentsMargins(0, 16, 0, 0)
         button_row.setSpacing(8)
         self._all_buttons = (
             self.process,
@@ -237,21 +245,21 @@ class StatusPanel(QFrame):
         )
         for button in self._all_buttons:
             button_row.addWidget(button)
+        button_row.insertStretch(0, 1)
         button_row.addStretch(1)
 
         column = QVBoxLayout(self)
         column.setContentsMargins(24, 24, 24, 24)
         column.setSpacing(0)
-        column.addStretch(1)
-        column.addWidget(self.icon)
-        column.addSpacing(12)
-        column.addWidget(self.headline)
-        column.addSpacing(4)
-        column.addWidget(self.subline)
         self._event_box = QVBoxLayout()
         self._event_box.setContentsMargins(0, 0, 0, 0)
         column.addLayout(self._event_box)
-        column.addWidget(self._track_box)
+        column.addStretch(1)
+        column.addWidget(self.headline)
+        column.addSpacing(4)
+        column.addWidget(self.subline)
+        column.addSpacing(24)
+        column.addWidget(self.stages)
         column.addWidget(self._button_box)
         column.addStretch(1)
         self._event_line: QWidget | None = None
@@ -260,7 +268,7 @@ class StatusPanel(QFrame):
     def set_event_line(self, widget: QWidget) -> None:
         """Show the "Photos go to <event>  Switch" line under the headline (UI-01)."""
         self._event_line = widget
-        self._event_box.setContentsMargins(0, 12, 0, 0)
+        self._event_box.setContentsMargins(0, 0, 0, 12)
         self._event_box.addWidget(widget)
         self._apply(self.view)
 
@@ -275,28 +283,21 @@ class StatusPanel(QFrame):
         if view == self.view:
             return
         if view.state != self.view.state:
-            self._crossfade()
+            self._crossfade()  # the stages draw their own motion; only states crossfade
         self._apply(view)
 
     def _apply(self, view: PanelView) -> None:
         self.view = view
-        tone, icon, token = LOOKS[view.state]
+        tone = LOOKS[view.state][0]
         restyle(self, tone=tone)
         tinted = tone != "neutral"
         restyle(self.subline, tinted=tinted)
-        self.icon.set_icon(icon, token)
         self.headline.setText(view.headline)
         self.subline.setText(view.subline)
         # Idle: the event line already says where photos go.
         said_by_line = view.state == "idle" and self._event_line is not None
         self.subline.setVisible(bool(view.subline) and not said_by_line)
-        self.tracker.setVisible(view.step >= 0)
-        if view.step >= 0:
-            self.tracker.set_current(view.step)
-        self.progress.setVisible(view.progress is not None)
-        if view.progress is not None:
-            self.progress.set_value(view.progress)
-        self._track_box.setVisible(view.step >= 0 or view.progress is not None)
+        self.stages.set_views(view.stages)
         shown = self._buttons.get(view.state, ())
         if view.state == "ready" and not view.card:
             shown = (self.process,)

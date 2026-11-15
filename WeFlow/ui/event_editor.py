@@ -17,6 +17,7 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
     QResizeEvent,
+    QShowEvent,
     QWheelEvent,
 )
 from PySide6.QtWidgets import (
@@ -52,6 +53,8 @@ from .widgets.album_picker import AlbumPicker
 from .widgets.common import Button, Toggle, label, restyle, separator
 
 PREVIEW_DEBOUNCE_MS = 150
+FORM_WIDTH = 320  # the settings column, at least
+PREVIEW_MIN = 240
 ZOOM_MAX = 8.0
 ZOOM_STEP = 1.25  # one scroll notch or key press
 LINE_GRAB = 12  # px either side of the line that drag the line, not the photo
@@ -71,11 +74,12 @@ NAMING_LABELS = {
     "import": "Import name",
     "custom_seq": "Custom name - Sequence",
     "custom": "Custom name",
+    "custom_filename": "Custom name - Filename",
     "date_filename": "Date - Filename",
     "filename": "Filename",
     "filename_seq": "Filename - Sequence",
 }
-USES_CUSTOM = ("custom_seq", "custom")
+USES_CUSTOM = ("custom_seq", "custom", "custom_filename")
 USES_SEQUENCE = ("custom_seq", "filename_seq")
 NO_PRESET = "No preset"
 GRID = {(0, 0): "tl", (0, 2): "tr", (1, 1): "center", (2, 0): "bl", (2, 2): "br"}
@@ -126,10 +130,27 @@ def toggle_row(caption: str, toggle: Toggle, tip: str = "") -> QWidget:
     box.setToolTip(tip)  # shown over the caption and the toggle
     row = QHBoxLayout(box)
     row.setContentsMargins(0, 0, 0, 0)
-    row.addWidget(label(caption, "body"), 1)
+    row.setSpacing(12)
+    row.addWidget(label(caption, "body", wrap=True), 1)  # wraps rather than push the toggle off
     row.addWidget(toggle)
     toggle.setAccessibleName(caption)
     return box
+
+
+class FormScroll(QScrollArea):
+    """The settings column. It is always wide enough for its widest row, so nothing is
+    ever cut off at the right edge (1.10.0: toggles were hidden at large text sizes)."""
+
+    def _needed(self) -> int:
+        form = self.widget()
+        inner = form.minimumSizeHint().width() if form is not None else 0
+        return max(FORM_WIDTH, inner + self.verticalScrollBar().sizeHint().width() + 4)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt naming
+        return QSize(self._needed(), 200)
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt naming
+        return QSize(self._needed(), 600)
 
 
 class SliderRow(QWidget):
@@ -483,10 +504,10 @@ class EventEditor(QDialog):
         self._watermark_path = event.watermark_path
         self.saved: Profile | None = None
         self.previews_rendered = 0
+        self._sized = False
         self.setWindowTitle("New event" if self.is_new else "Edit event")
         self.setWindowModality(Qt.WindowModality.WindowModal)  # a sheet on macOS
-        self.setFixedWidth(640)
-        self.resize(640, 680)
+        self.setSizeGripEnabled(True)
 
         # ------------------------------------------------------------- fields
         self.name = QLineEdit(event.name)
@@ -530,6 +551,8 @@ class EventEditor(QDialog):
         self.auto_wb = Toggle(event.auto_wb)
         self.wb_strength = SliderRow("Strength", 0, 100, round(event.wb_strength * 100))
         self.auto_tone = Toggle(event.auto_tone)
+        self.shadows = SliderRow("Shadows", -100, 100, round(event.shadows * 100), suffix="")
+        self.shadows.setToolTip("Brighten (right) or deepen (left) the dark parts of photos.")
 
         self.watermark = Toggle(event.watermark)
         self.watermark_thumb = QLabel()
@@ -588,6 +611,7 @@ class EventEditor(QDialog):
         left.addWidget(toggle_row("Auto white balance", self.auto_wb))
         left.addWidget(self.wb_strength)
         left.addWidget(toggle_row("Auto tone", self.auto_tone))
+        left.addWidget(self.shadows)
         left.addWidget(separator())
         left.addWidget(label("Watermark", "heading"))
         left.addWidget(toggle_row("Add a watermark", self.watermark))
@@ -642,14 +666,15 @@ class EventEditor(QDialog):
         left.addStretch(1)
         form = QWidget()
         form.setLayout(left)
-        scroll = QScrollArea()
+        scroll = self._form_scroll = FormScroll()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setWidget(form)
-        scroll.setFixedWidth(304)
+        scroll.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
 
         # -------------------------------------------------------------- right
         self.preview = PreviewSplit()
+        self.preview.setMinimumWidth(PREVIEW_MIN)
         self.sample_button = Button("Choose sample photo…")
         self.sample_button.clicked.connect(self._choose_sample)
         captions = QHBoxLayout()
@@ -722,7 +747,14 @@ class EventEditor(QDialog):
             self.limit_size,
         ):
             toggle.toggled.connect(self._changed)
-        for slider in (self.wb_strength, self.size, self.opacity, self.margin, self.quality):
+        for slider in (
+            self.wb_strength,
+            self.shadows,
+            self.size,
+            self.opacity,
+            self.margin,
+            self.quality,
+        ):
             slider.changed.connect(self._changed)
         self.position.changed.connect(self._changed)
         self.start_number.valueChanged.connect(self._changed)
@@ -737,7 +769,20 @@ class EventEditor(QDialog):
         self.name.selectAll()
 
     def sizeHint(self) -> QSize:
-        return QSize(640, 680)
+        """About 640 × 680, but never narrower than the form needs nor bigger than the
+        screen."""
+        width = max(640, self._form_scroll.sizeHint().width() + PREVIEW_MIN + 72)
+        height = 680
+        screen = self.screen().availableGeometry() if self.screen() else None
+        if screen is not None:
+            width, height = min(width, screen.width() - 32), min(height, screen.height() - 48)
+        return QSize(width, height)
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 - Qt naming
+        if not self._sized:
+            self._sized = True
+            self.resize(self.sizeHint())
+        super().showEvent(event)
 
     # ------------------------------------------------------------------ form
     def current(self) -> Profile:
@@ -753,6 +798,7 @@ class EventEditor(QDialog):
             auto_wb=self.auto_wb.isChecked(),
             wb_strength=self.wb_strength.value() / 100,
             auto_tone=self.auto_tone.isChecked(),
+            shadows=self.shadows.value() / 100,
             watermark=self.watermark.isChecked(),
             watermark_path=self._watermark_path,
             watermark_position=self.position.position(),
@@ -792,6 +838,7 @@ class EventEditor(QDialog):
         self.quality.setEnabled(not event.limit_file_size)
         self.size_field.setVisible(event.limit_file_size)
         self._sync_preset(event)
+        self._fit_form()
 
         found = self.errors()
         for key, line, text in (
@@ -806,6 +853,16 @@ class EventEditor(QDialog):
                 restyle(line, invalid=bool(message))
         self.save.setEnabled(not found)
         self._debounce.start()
+
+    def _fit_form(self) -> None:
+        """Widen the dialog if a section just shown needs more room than it has."""
+        scroll = getattr(self, "_form_scroll", None)
+        if scroll is None:
+            return
+        scroll.updateGeometry()
+        need = scroll.minimumSizeHint().width() + PREVIEW_MIN + 72
+        if self.isVisible() and self.width() < need:
+            self.resize(need, self.height())
 
     def _destination_changed(self) -> None:
         self.album_picker.set_destination(self.destination.currentData())

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QShowEvent
@@ -23,13 +24,15 @@ from .widgets import (
     CardRow,
     EventCard,
     ModeSwitch,
+    StageView,
     StatusPanel,
     label,
+    stages_for,
     view_for,
 )
 from .widgets.notice_bar import NoticeBar
 
-MAX_ROWS = 5
+MAX_ROWS = 3  # 1.10.0: the stages need the room; the list scrolls after 3
 ROW_HEIGHT = 44
 DONE_FADE_MS = 10_000
 NOTICE_MS = 5_000
@@ -52,8 +55,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.bridge = bridge
         self.setWindowTitle("WeFlow")
-        self.resize(560, 720)
-        self.setMinimumSize(480, 600)
+        self.resize(560, 760)
+        self.setMinimumSize(480, 640)
         self.done_fade_ms = DONE_FADE_MS
         self.can_hide_to_tray = False
         self._batches: dict[int, Batch] = {}
@@ -66,6 +69,9 @@ class MainWindow(QMainWindow):
         self._status = "idle"
         self._focus_cleared = False
         self._update_opened = ""  # version whose download page was opened this session
+        self._ejected: set[int] = set()  # batches whose card WeFlow ejected
+        self._auto_ejecting: set[int] = set()  # batches auto-eject has been tried for
+        self._ejecting: dict[str, int] = {}  # card path -> batch, while an eject runs
 
         page = QWidget()
         page.setObjectName("Page")
@@ -199,12 +205,15 @@ class MainWindow(QMainWindow):
         visible = self._visible_batches()
         current = visible[0] if visible and visible[0].id not in self._dismissed else None
         self._shown_batch = current
+        card_in = bool(current and current.source in self._cards)
         view = view_for(
             current,
             event_name=active.name if active else "",
             paused=paused,
-            card_present=bool(current and current.source in self._cards),
+            card_present=card_in,
         )
+        if current is not None:
+            view = replace(view, stages=self._stages(current, visible, card_in))
         self.panel.show_view(view)
 
         if view.state == "done" and current is not None:
@@ -236,6 +245,22 @@ class MainWindow(QMainWindow):
 
     def status(self) -> str:
         return self._status
+
+    def _stages(
+        self, current: Batch, visible: list[Batch], card_in: bool
+    ) -> tuple[StageView, StageView, StageView]:
+        """Every stage follows the newest card. A stage the newest card has not reached
+        yet shows the earlier card that is in it now (a new card copies while the one
+        before it uploads); each stage names its card."""
+        ejected = current.id in self._ejected
+        views = list(stages_for(current, card_in=card_in, ejected=ejected))
+        for index, states in ((1, ("safe", "processing", "ready")), (2, ("uploading", "held"))):
+            if views[index].state != "pending":
+                continue
+            other = next((b for b in visible[1:] if b.state in states), None)
+            if other is not None:
+                views[index] = stages_for(other)[index]
+        return views[0], views[1], views[2]
 
     def _offer_update(self, status: str) -> None:
         """Offer a newer version only while idle, so it never competes with a card."""
@@ -308,9 +333,23 @@ class MainWindow(QMainWindow):
     def _on_batch(self, batch: Batch) -> None:
         previous = self._batches.get(batch.id)
         self._batches[batch.id] = batch
+        self._maybe_auto_eject(batch, previous)
         if batch.state == "done" and previous is not None and previous.state != "done":
             self.notify.emit("done", "All done", f"{batch.label}: {self._done_text(batch)}")
         self.refresh()
+
+    def _maybe_auto_eject(self, batch: Batch, previous: Batch | None) -> None:
+        """Eject the card once every file on it is copied and verified, if asked to."""
+        if not (self.bridge.settings.auto_eject and batch.is_card and batch.verified):
+            return
+        if batch.state == "error" or batch.id in self._auto_ejecting:
+            return
+        if previous is not None and previous.verified:
+            return  # it was verified before this update: the moment has passed
+        if batch.source not in self._cards:
+            return
+        self._auto_ejecting.add(batch.id)
+        self._start_eject(batch)
 
     def _done_text(self, batch: Batch) -> str:
         return view_for(batch).subline
@@ -381,11 +420,17 @@ class MainWindow(QMainWindow):
 
     def _on_eject_finished(self, path: str, ok: bool, message: str) -> None:
         self.panel.set_ejecting(False)
+        batch_id = self._ejecting.pop(path, None)
+        auto = batch_id in self._auto_ejecting
         if ok:
             self._cards.pop(path, None)
+            if batch_id is not None:
+                self._ejected.add(batch_id)
             self.notice_bar.show_message("safe", "Card ejected. You can take it out.")
             self.drawer.add("info", "Card ejected.")
         else:
+            if auto:  # the copy is safe either way; say so first
+                message = "Safe to remove, but the card would not eject. Eject it yourself."
             self.notice_bar.show_message("error", message)
             self.drawer.add("error", message)
         self.refresh()
@@ -408,8 +453,14 @@ class MainWindow(QMainWindow):
 
     def _eject(self) -> None:
         if self._shown_batch is not None:
-            self.panel.set_ejecting(True)
-            self.bridge.eject(self._shown_batch.source)
+            self._start_eject(self._shown_batch)
+
+    def _start_eject(self, batch: Batch) -> None:
+        if batch.source in self._ejecting:
+            return
+        self._ejecting[batch.source] = batch.id
+        self.panel.set_ejecting(True)
+        self.bridge.eject(batch.source)
 
     def _release(self) -> None:
         if self._shown_batch is not None:

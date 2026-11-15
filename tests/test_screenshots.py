@@ -20,7 +20,7 @@ ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
 @pytest.mark.parametrize("name", list(PANEL_STATES))
 def test_screenshot_every_state(qtbot, window, bridge, event, name: str, scheme: str) -> None:  # type: ignore[no-untyped-def]
     theme.set_scheme(scheme)
-    window.resize(560, 720)
+    window.resize(560, 760)
     sample, card_in, paused = PANEL_STATES[name]
     if paused:
         bridge.set_paused(True)
@@ -38,5 +38,5 @@ def test_screenshot_every_state(qtbot, window, bridge, event, name: str, scheme:
     ARTIFACTS.mkdir(exist_ok=True)
     shot = window.grab()
     assert shot.save(str(ARTIFACTS / f"main-{name}-{scheme}.png"))
-    assert (shot.width(), shot.height()) == (560, 720)
+    assert (shot.width(), shot.height()) == (560, 760)
     theme.set_scheme("light")

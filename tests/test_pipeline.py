@@ -50,9 +50,9 @@ def test_card_goes_copying_safe_processing_uploading_done(
     root = store.event_root(event)
     # 1.5.0: processed copies are deleted once uploaded; only originals remain.
     assert not (root / "processed").exists()
-    assert not list((root / ".WeFlow" / "work").glob("*.jpg"))
+    assert not list((root / ".WeFlow" / "work").glob("*.[jJ][pP]*[gG]"))
     assert len(list((root / "originals").iterdir())) == NEW_PHOTOS
-    assert all(p.name.startswith("Gala_2026") for p in (root / "originals").iterdir())
+    assert all(p.name.startswith("IMG_") for p in (root / "originals").iterdir())  # FR-13
 
 
 def test_fr14_second_insert_counts_already_imported(
@@ -231,7 +231,7 @@ def test_fr38_paced_waits_before_processing_and_uploading(
     batch = pipeline.submit(card, event, "CARD_A", is_card=True)
     ready = recorder.wait_state(batch.id, "ready")
     assert ready.verified and ready.ready == NEW_PHOTOS and ready.processed == 0
-    assert not list((store.event_root(event) / "processed").glob("*.jpg"))
+    assert not list((store.event_root(event) / "processed").glob("*.[jJ][pP]*[gG]"))
     assert pipeline.process_ready(event.id) == NEW_PHOTOS
     held = recorder.wait_state(batch.id, "held")
     assert held.held == NEW_PHOTOS and fake.upload_calls == 0
@@ -485,7 +485,7 @@ def test_fr26_processed_copies_and_uploads_use_the_naming_rule(
     expected = [f"Smith-Wedding-{n:04d}.jpg" for n in range(1, NEW_PHOTOS + 1)]
     assert sorted(p.name for p in (root / "processed").iterdir()) == expected
     assert sorted(fake.uploads) == expected
-    assert all(p.name.startswith("Gala_2026") for p in (root / "originals").iterdir())
+    assert all(p.name.startswith("IMG_") for p in (root / "originals").iterdir())  # FR-13
     records = sorted(photos(store, event).photos.values(), key=lambda p: p.seq)
     assert [p.seq for p in records] == list(range(1, NEW_PHOTOS + 1))
     assert all(p.original and p.original in p.name for p in records)  # card name kept
@@ -553,7 +553,7 @@ def test_keep_processed_moves_uploaded_copies_into_processed(
     recorder.wait_state(batch.id, "done")
     root = store.event_root(event)
     assert sorted(fake.uploads) == sorted(p.name for p in (root / "processed").iterdir())
-    assert not list((root / ".WeFlow" / "work").glob("*.jpg"))
+    assert not list((root / ".WeFlow" / "work").glob("*.[jJ][pP]*[gG]"))
 
 
 def test_pre_150_processed_copy_uploads_and_is_left_alone(
@@ -567,11 +567,11 @@ def test_pre_150_processed_copy_uploads_and_is_left_alone(
     recorder.wait_state(batch.id, "held")
     root = store.event_root(event)
     (root / "processed").mkdir()
-    for f in (root / ".WeFlow" / "work").glob("*.jpg"):
+    for f in (root / ".WeFlow" / "work").glob("*.[jJ][pP]*[gG]"):
         f.rename(root / "processed" / f.name)
     pipeline.release_held(event.id)
     recorder.wait(lambda: recorder.batches(batch.id)[-1].state == "done")
-    assert len(list((root / "processed").glob("*.jpg"))) == NEW_PHOTOS
+    assert len(list((root / "processed").glob("*.[jJ][pP]*[gG]"))) == NEW_PHOTOS
 
 
 def test_missing_processed_copy_is_made_again_before_upload(
@@ -582,7 +582,7 @@ def test_missing_processed_copy_is_made_again_before_upload(
     pipeline = make_pipeline(fake)
     batch = pipeline.submit(card, event, "CARD_A", is_card=True)
     recorder.wait_state(batch.id, "held")
-    for f in (store.event_root(event) / ".WeFlow" / "work").glob("*.jpg"):
+    for f in (store.event_root(event) / ".WeFlow" / "work").glob("*.[jJ][pP]*[gG]"):
         f.unlink()
     event.hold_uploads = False
     store.update_event(event)
