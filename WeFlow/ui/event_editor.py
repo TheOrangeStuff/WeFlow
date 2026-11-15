@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from dataclasses import replace
 
-from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QImage,
     QKeyEvent,
@@ -141,10 +141,43 @@ class FormScroll(QScrollArea):
     """The settings column. It is always wide enough for its widest row, so nothing is
     ever cut off at the right edge (1.10.0: toggles were hidden at large text sizes)."""
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._extra = 0  # added when the form turned out wider than measured
+
+    def setWidget(self, widget: QWidget) -> None:  # noqa: N802 - Qt naming
+        super().setWidget(widget)
+        widget.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt naming
+        # A scroll area does not pass its form's size changes up. Fonts and styles arrive
+        # after construction (on Windows, when the dialog is first shown), and sections
+        # appear and disappear, so measure again each time the form re-lays itself out.
+        if watched is self.widget():
+            if event.type() == QEvent.Type.LayoutRequest:
+                self.updateGeometry()
+            elif event.type() == QEvent.Type.Resize:
+                QTimer.singleShot(0, self._catch_up)
+        return super().eventFilter(watched, event)
+
+    def _catch_up(self) -> None:
+        """Whatever the measurement said, if the form ended up wider than the space it
+        has, widen the column by the difference (seen on Windows at 125–150% scaling)."""
+        form = self.widget()
+        if form is None:
+            return
+        over = form.width() - self.viewport().width()
+        if over > 0:
+            self._extra += over
+            self.updateGeometry()
+
     def _needed(self) -> int:
         form = self.widget()
-        inner = form.minimumSizeHint().width() if form is not None else 0
-        return max(FORM_WIDTH, inner + self.verticalScrollBar().sizeHint().width() + 4)
+        inner = 0
+        if form is not None:
+            inner = max(form.minimumSizeHint().width(), form.minimumWidth())
+        chrome = self.verticalScrollBar().sizeHint().width() + 2 * self.frameWidth() + 2
+        return max(FORM_WIDTH, inner + chrome) + self._extra
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt naming
         return QSize(self._needed(), 200)

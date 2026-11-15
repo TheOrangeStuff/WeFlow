@@ -65,7 +65,7 @@ def test_m5_create_event_copies_active_and_becomes_active(
     editor = EventEditor(bridge, bridge.draft_event(), window)
     qtbot.addWidget(editor)
     editor.show()
-    assert editor.is_new and editor.width() == 640
+    assert editor.is_new and editor.width() >= 640  # wider only if the form needs it
     assert editor.name.text().endswith("New Event")  # FR-03: dated name, copied settings
     assert editor.destination.currentData() == "flickr" and editor.album.text() == "Gala"
     assert not editor.delete.isVisible() and not editor.duplicate.isVisible()
@@ -689,18 +689,35 @@ def test_fr39_click_gallery_box_opens_the_chooser(
 
 
 def test_editor_form_is_never_cut_off(qtbot, window, bridge, event) -> None:  # type: ignore[no-untyped-def]
-    """1.10.0: at large text sizes the toggles sat past the right edge of the form."""
+    """1.10.0: at large text sizes the toggles sat past the right edge of the form. Fonts
+    can arrive after the dialog is built (Windows applies them when it is shown)."""
     from PySide6.QtGui import QFont
 
     event.destination, event.watermark, event.limit_file_size = "flickr", True, True
     bridge.save_event(event)
+    for before_show in (True, False):
+        editor = EventEditor(bridge, bridge.active(), window)
+        qtbot.addWidget(editor)
+        big = QFont(editor.font())
+        big.setPixelSize(22)
+        if before_show:
+            editor.setFont(big)
+        editor.show()
+        qtbot.wait(20)
+        if not before_show:
+            editor.setFont(big)
+            qtbot.wait(50)
+        form = editor._form_scroll.widget()
+        assert form.width() <= editor._form_scroll.viewport().width(), before_show
+        assert editor.shadows.isVisible()
+        editor.close()
+
+    # However the form comes to need more room (a row Qt measured too small, as happened
+    # on Windows), the column catches up instead of cutting the row off.
     editor = EventEditor(bridge, bridge.active(), window)
     qtbot.addWidget(editor)
-    big = QFont(editor.font())
-    big.setPixelSize(22)
-    editor.setFont(big)
     editor.show()
     qtbot.wait(20)
     form = editor._form_scroll.widget()
-    assert form.width() <= editor._form_scroll.viewport().width()
-    assert editor.shadows.isVisible()
+    form.setMinimumWidth(editor._form_scroll.viewport().width() + 60)
+    qtbot.waitUntil(lambda: form.width() <= editor._form_scroll.viewport().width(), timeout=2000)

@@ -394,7 +394,12 @@ separate updater framework.
 - Versions before 1.9.0 can only offer **Download**, so getting onto 1.9.0 is one last
   manual install.
 
-## 1.10.0 — Three stages on the main screen, auto-eject, camera file names, Shadows
+## 1.10.1 — Three stages on the main screen, auto-eject, camera file names, Shadows
+
+1.10.0 was tagged but never shipped: its Windows tests showed the event editor could still
+cut off its switches. The settings column now re-measures whenever its contents re-lay
+themselves out (Windows applies fonts when the dialog is first shown, after the first
+measurement), and widens itself if the form still ends up wider than it.
 
 At the owner's request:
 

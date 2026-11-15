@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.10.0 — 2026-11-15
+## 1.10.1 — 2026-11-15
 
 - A new main screen: three big stages, Transfer, Process and Upload. Each fills up while it
   works and turns into a green tick when it is done.
