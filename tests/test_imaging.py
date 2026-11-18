@@ -221,6 +221,16 @@ def test_fr27_limit_file_size_ignores_quality_and_fits(tmp_path: Path) -> None:
     assert not list(tmp_path.glob(".tmp-*"))
 
 
+def test_fr27_limit_search_start_never_changes_the_answer() -> None:
+    """1.14.1: starting the search from the last photo's quality only saves encodes."""
+    img = synthetic_photo(4, size=(900, 600))
+    sizes = {q: len(imaging.encode_jpeg(img, q, {})) for q in (5, 40, 70, 97)}
+    for limit in (sizes[5], sizes[40], sizes[70] + 1, sizes[97], 10**9, 1):
+        plain = imaging.encode_within(img, limit, {})
+        for start in (0, 1, 39, 40, 41, 72, 99, 100):
+            assert imaging.encode_within(img, limit, {}, start) == plain, (limit, start)
+
+
 def test_fr27_impossible_limit_still_writes_smallest(tmp_path: Path) -> None:
     source = tmp_path / "in.jpg"
     save_photo(source, 4, size=(1200, 800))

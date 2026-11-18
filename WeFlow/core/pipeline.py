@@ -13,6 +13,7 @@ import itertools
 import logging
 import os
 import queue
+import sys
 import threading
 import time
 from collections import deque
@@ -33,6 +34,8 @@ RETRY_STEADY = 300.0
 MAX_ATTEMPTS = 12
 FLUSH_SECONDS = 0.1
 PIXEL_BUDGET = 120_000_000  # decoded pixels in flight at once (NFR-08)
+BYTES_PER_PIXEL = 9  # the most a worker holds: decoded, turned upright and adjusted
+MAX_MEMORY_SHARE = 1 / 3  # of the computer's memory, for decoded photos at MAX
 ACTIVE_STATES = ("copying", "safe", "processing", "uploading")
 INTERRUPTED = "The copy was interrupted. Re-insert the card to try again."
 
@@ -51,17 +54,46 @@ def default_process_workers() -> int:
 SPEED_LEVELS = ("low", "medium", "high")
 
 
-def speed_limits(level: str, cpus: int | None = None) -> tuple[int, int, int]:
+def total_memory() -> int:
+    """This computer's memory in bytes, or 0 when it can't be read."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            class Status(ctypes.Structure):  # MEMORYSTATUSEX
+                _fields_ = [  # noqa: RUF012
+                    ("length", ctypes.c_ulong),
+                    ("load", ctypes.c_ulong),
+                    ("total", ctypes.c_ulonglong),
+                    ("rest", ctypes.c_ulonglong * 6),
+                ]
+
+            status = Status()
+            status.length = ctypes.sizeof(Status)
+            if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                return 0
+            return int(status.total)
+        return os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (OSError, ValueError, AttributeError):
+        return 0
+
+
+def speed_limits(
+    level: str, cpus: int | None = None, memory: int | None = None
+) -> tuple[int, int, int]:
     """(processing workers, upload workers, pixel budget) for a speed level.
 
     Medium is the spec's default (FR-25, NFR-08). Low leaves most of the computer
-    free; High uses every core but one and about twice the memory.
+    free. High (MAX on screen) runs a worker on every core, and lets decoded photos
+    fill up to a third of the memory so big files don't leave workers waiting.
     """
     cores = cpus or os.cpu_count() or 2
     if level == "low":
         return max(1, min(2, cores // 4)), 1, PIXEL_BUDGET
     if level == "high":
-        return max(2, cores - 1), 4, PIXEL_BUDGET * 2
+        ram = total_memory() if memory is None else memory
+        budget = max(PIXEL_BUDGET * 2, int(ram * MAX_MEMORY_SHARE) // BYTES_PER_PIXEL)
+        return max(2, cores), 4, budget
     return max(1, min(4, cores // 2)), 2, PIXEL_BUDGET
 
 

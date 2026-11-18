@@ -620,12 +620,16 @@ def test_missing_processed_copy_is_made_again_before_upload(
 
 
 def test_speed_levels_scale_workers_and_memory() -> None:
-    from WeFlow.core.pipeline import PIXEL_BUDGET, speed_limits
+    from WeFlow.core.pipeline import PIXEL_BUDGET, speed_limits, total_memory
 
     assert speed_limits("low", 12) == (2, 1, PIXEL_BUDGET)
     assert speed_limits("medium", 12) == (4, 2, PIXEL_BUDGET)  # FR-25 default
-    assert speed_limits("high", 12) == (11, 4, PIXEL_BUDGET * 2)
-    assert speed_limits("high", 2)[0] == 2
+    # MAX: every core; decoded photos may fill a third of memory, never less than before.
+    assert speed_limits("high", 12, memory=0) == (12, 4, PIXEL_BUDGET * 2)
+    assert speed_limits("high", 12, memory=16 * 1024**3)[2] == 16 * 1024**3 // 3 // 9
+    assert speed_limits("high", 12, memory=2 * 1024**3)[2] == PIXEL_BUDGET * 2
+    assert speed_limits("high", 1)[0] == 2
+    assert total_memory() > 0
 
 
 def test_speed_change_applies_live(make_pipeline) -> None:  # type: ignore[no-untyped-def]

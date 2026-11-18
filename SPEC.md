@@ -173,11 +173,12 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
 - **FR-24** Optional resize (Lanczos) and per-event JPEG quality.
 - **FR-25** Writes are atomic: write to `.tmp-<name>`, then rename. Run `min(4, cpu_count // 2)` processing workers.
   - *(1.12.0)* That is the **Medium** speed (`Settings.speed`, default `medium`). **Low** runs `min(2, cpu_count // 4)` (at least 1) processing and 1 upload worker; **High** runs `cpu_count - 1` (at least 2) processing and 4 upload workers, with twice the pixel budget (NFR-08 applies to Medium). A change applies at once; photos already in hand finish first.
+  - *(1.14.1)* **High** (shown as MAX) runs `cpu_count` (at least 2) processing workers. Its pixel budget is a third of the computer's memory at 9 bytes per pixel, and never less than twice Medium's.
 - **FR-26** *(1.2.0)* Processed copies are named by the event's File naming rule, Lightroom-style: Import name (FR-13, the default), Custom name - Sequence, Custom name, Custom name - Filename *(1.10.0)*, Date - Filename, Filename, Filename - Sequence.
   - Sequence numbers have 4 digits, count from the start number, and follow import order within the event. "Filename" is the card's file name; "Date" is the capture date `YYYYMMDD`.
   - Names are made safe on both OSes. A taken name gets `-2`, `-3`…
   - The name is fixed the first time a photo is processed and stored on its record. Changing the rule later never renames a photo that has a name, so uploads and retries always find the file. Originals are never renamed by this rule.
-- **FR-27** *(1.2.0)* JPEG quality is 0–100. "Limit file size to N K" ignores quality and writes the highest quality that fits; if even quality 0 is too big, that smallest version is written.
+- **FR-27** *(1.2.0)* JPEG quality is 0–100. "Limit file size to N K" ignores quality and writes the highest quality that fits; if even quality 0 is too big, that smallest version is written. *(1.14.1)* The search may start from the quality that fitted the previous photo; the result is the same.
 - **FR-28** *(1.2.0)* Export presets hold FR-26/27 settings (naming, custom text, start number, quality, size limit) under a name. Any event, new or existing, can pick one; saving with an existing name replaces it. Presets never hold destination, look or watermark settings.
 
 ### 5.4 Uploading

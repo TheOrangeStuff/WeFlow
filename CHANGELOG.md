@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.14.1 — 2026-11-18
+
+- MAX speed now uses every processor core, and more memory on computers that have it, so
+  large photos no longer wait their turn.
+- Photos are adjusted about a third faster at every speed.
+- Events with "Limit file size" on process up to three times faster.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.14.0 — 2026-11-18
 
 - A new main screen. The headline is bigger, your newest photo shows behind it in black

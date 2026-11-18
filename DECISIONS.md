@@ -531,3 +531,33 @@ At the owner's request:
 - **Linux code removed**: card discovery under `/media` and `/run/media`, and ejecting
   with `umount`. See decision 24.
 
+
+## 1.14.1 — MAX speed really uses the whole computer
+
+The owner asked whether MAX pushes the computer as hard as it can. Measured on the dev
+machine (2 cores / 4 threads) with 24 MP, 12 MB JPEGs; three things held it back.
+
+- **"Limit file size" encoded one photo at a time, at every speed.** The search encoded
+  to `BytesIO`, and Pillow holds Python's lock for a whole encode to memory (it releases
+  it only when encoding to a real file). Four workers ran 1.4x one worker. The tries now
+  go to an unbuffered temporary file: four workers run 2.6x one worker.
+- **The size search starts from the last photo's quality** (kept per limit and pixel
+  count, in memory only). It steps away in doubling strides until the answer is between
+  two tries, then halves. Same answer as the plain search, in about 3 encodes rather
+  than 7. With both changes a size-limited batch went from 3.0 to 10.7 photos a second.
+- **The analysis thumbnail took a quarter of each photo's time** (79 ms of 304): a
+  one-step bicubic shrink of the full image to 256 px. It now shrinks in two steps
+  (`reducing_gap=2`): 11 ms. The lookup table differs by at most 1 level in a few of its
+  768 entries, which can't be seen.
+- **MAX runs a worker on every core** (was every core but one). Workers spend their time
+  inside Pillow with Python's lock released, so the UI thread still gets its turn. On
+  the dev machine 3 workers gave 7.2 photos a second and 4 give 10.9 (with the thumbnail
+  fix).
+- **MAX's pixel budget follows the computer's memory**: a third of it, at 9 bytes per
+  pixel (decoded, turned upright and adjusted copies of a portrait photo), never less
+  than the old 240 MP. The fixed 240 MP let only five 45 MP photos run at once however
+  many cores there were. 16 GB now allows 636 MP. DEFAULT and LOW are unchanged, so
+  NFR-08 still holds for DEFAULT.
+- **Not changed, the owner's call:** processing still waits for the whole card to be
+  copied and verified (decision 16), and WeFlow does not yet ask the system to stay
+  awake or to keep it at full speed while its window is hidden.
