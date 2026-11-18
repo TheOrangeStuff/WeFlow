@@ -169,6 +169,7 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
   - Preserve the rest of the EXIF data, and the ICC profile when the source is RGB.
 - **FR-24** Optional resize (Lanczos) and per-event JPEG quality.
 - **FR-25** Writes are atomic: write to `.tmp-<name>`, then rename. Run `min(4, cpu_count // 2)` processing workers.
+  - *(1.12.0)* That is the **Medium** speed (`Settings.speed`, default `medium`). **Low** runs `min(2, cpu_count // 4)` (at least 1) processing and 1 upload worker; **High** runs `cpu_count - 1` (at least 2) processing and 4 upload workers, with twice the pixel budget (NFR-08 applies to Medium). A change applies at once; photos already in hand finish first.
 - **FR-26** *(1.2.0)* Processed copies are named by the event's File naming rule, Lightroom-style: Import name (FR-13, the default), Custom name - Sequence, Custom name, Custom name - Filename *(1.10.0)*, Date - Filename, Filename, Filename - Sequence.
   - Sequence numbers have 4 digits, count from the start number, and follow import order within the event. "Filename" is the card's file name; "Date" is the capture date `YYYYMMDD`.
   - Names are made safe on both OSes. A taken name gets `-2`, `-3`…
@@ -308,6 +309,7 @@ Transfer follows the newest batch. Process and Upload also follow it, except tha
   - API key fields stay hidden until the user clicks "Use my own API key…".
   - Card-detected sound on/off.
   - *(1.10.0)* "Eject the card when it's copied" on/off (default off, FR-16).
+  - *(1.12.0)* Speed: a three-stop slider, Low / Medium / High (FR-25), with a three-bar meter and one line saying what the level does.
   - Start at login on/off (Should).
 - **First run:** 3 steps in one window — library folder → connect a service (skippable) → create the first event. Then the main window opens.
 - **Tray / menu-bar icon** with 4 states (idle, working, safe, attention). Its menu: Show WeFlow, Pause watching, Quit.

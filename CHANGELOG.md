@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.12.0 — 2026-11-17
+
+- New Speed setting in Settings: Low, Medium or High.
+- High uses nearly all of your computer to process and upload photos sooner. Low keeps it
+  free for other work. Medium works the way WeFlow always has.
+- Copying from the card runs at full speed at every setting.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.11.0 — 2026-11-15
 
 - Flickr albums are now sorted by date taken, oldest first, once each card's photos are up.

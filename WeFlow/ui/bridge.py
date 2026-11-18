@@ -129,6 +129,7 @@ class Bridge(QObject):
         self.watcher = cards.CardWatcher(self._on_core_event, watch_interval)
         self.watcher.set_paused(store.settings.paused)
         self.pipeline.set_paced(store.settings.paced)
+        self.pipeline.set_speed(store.settings.speed)
         self.connected: dict[str, bool] = dict.fromkeys(SERVICES, False)
         self.has_keys: dict[str, bool] = dict.fromkeys(SERVICES, False)
         self._albums: dict[str, list[AlbumChoice]] = {}  # galleries already fetched, per service
@@ -293,6 +294,10 @@ class Bridge(QObject):
     def set_paced(self, paced: bool) -> None:
         self.update_settings(paced=paced)
         self._queue(lambda: self.pipeline.set_paced(paced))
+
+    def set_speed(self, level: str) -> None:
+        self.update_settings(speed=level)
+        self._queue(lambda: self.pipeline.set_speed(level))
 
     def retry(self, event_id: str | None) -> None:
         self._queue(lambda: self.pipeline.retry_failed(event_id))

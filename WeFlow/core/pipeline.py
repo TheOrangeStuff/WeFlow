@@ -1,7 +1,8 @@
 """The engine: copy → verify → process → upload, with saved state and retries.
 
-Threads: one copier, a few processing workers, two upload workers and a flusher
-that recounts changed batches and emits ``BatchUpdated`` at most 10 times a second.
+Threads: one copier, processing and upload workers (the speed level sets how many
+run at once) and a flusher that recounts changed batches and emits ``BatchUpdated``
+at most 10 times a second.
 """
 
 from __future__ import annotations
@@ -47,6 +48,62 @@ def default_process_workers() -> int:
     return max(1, min(4, (os.cpu_count() or 2) // 2))
 
 
+SPEED_LEVELS = ("low", "medium", "high")
+
+
+def speed_limits(level: str, cpus: int | None = None) -> tuple[int, int, int]:
+    """(processing workers, upload workers, pixel budget) for a speed level.
+
+    Medium is the spec's default (FR-25, NFR-08). Low leaves most of the computer
+    free; High uses every core but one and about twice the memory.
+    """
+    cores = cpus or os.cpu_count() or 2
+    if level == "low":
+        return max(1, min(2, cores // 4)), 1, PIXEL_BUDGET
+    if level == "high":
+        return max(2, cores - 1), 4, PIXEL_BUDGET * 2
+    return max(1, min(4, cores // 2)), 2, PIXEL_BUDGET
+
+
+class Slots:
+    """An adjustable limit on how many workers run at once."""
+
+    def __init__(self, limit: int) -> None:
+        self._limit = max(1, limit)
+        self._used = 0
+        self._closed = False
+        self._cond = threading.Condition()
+
+    @property
+    def limit(self) -> int:
+        return self._limit
+
+    def set_limit(self, limit: int) -> None:
+        with self._cond:
+            self._limit = max(1, limit)
+            self._cond.notify_all()
+
+    def acquire(self) -> bool:
+        """Wait for a free slot. Returns ``False`` once closed."""
+        with self._cond:
+            while not self._closed and self._used >= self._limit:
+                self._cond.wait()
+            if self._closed:
+                return False
+            self._used += 1
+            return True
+
+    def release(self) -> None:
+        with self._cond:
+            self._used -= 1
+            self._cond.notify_all()
+
+    def close(self) -> None:
+        with self._cond:
+            self._closed = True
+            self._cond.notify_all()
+
+
 class _DelayQueue:
     """A queue whose items become available after a delay."""
 
@@ -87,6 +144,11 @@ class PixelBudget:
         self._limit = limit
         self._used = 0
         self._cond = threading.Condition()
+
+    def set_limit(self, limit: int) -> None:
+        with self._cond:
+            self._limit = limit
+            self._cond.notify_all()
 
     @contextlib.contextmanager
     def reserve(self, pixels: int) -> Iterator[None]:
@@ -130,7 +192,7 @@ class Pipeline:
         emit: Emit,
         uploader_factory: Callable[[str], Uploader] = make_uploader,
         process_workers: int | None = None,
-        upload_workers: int = 2,
+        upload_workers: int | None = None,
         retry_delay: Callable[[int], float] = retry_delay,
     ) -> None:
         self._store = store
@@ -154,11 +216,18 @@ class Pipeline:
         self._process_q: queue.Queue[Task | None] = queue.Queue()
         self._upload_q = _DelayQueue()
         self._threads: list[threading.Thread] = []
-        workers = process_workers or default_process_workers()
+        # Threads for the fastest level start once; Slots decide how many may run.
+        # A fixed count (tests) ignores the speed level.
+        self._fixed = (process_workers, upload_workers)
+        self._speed = "medium"
+        most_process, most_upload, _ = speed_limits("high")
+        process, upload, _ = speed_limits("medium")
+        self._process_slots = Slots(process_workers or process)
+        self._upload_slots = Slots(upload_workers or upload)
         self._spawn("copy", self._copy_loop)
-        for n in range(workers):
+        for n in range(process_workers or max(most_process, process)):
             self._spawn(f"process-{n}", self._process_loop)
-        for n in range(upload_workers):
+        for n in range(upload_workers or most_upload):
             self._spawn(f"upload-{n}", self._upload_loop)
         self._spawn("flush", self._flush_loop)
 
@@ -192,6 +261,22 @@ class Pipeline:
     @property
     def paced(self) -> bool:
         return self._paced
+
+    @property
+    def speed(self) -> str:
+        return self._speed
+
+    def set_speed(self, level: str) -> None:
+        """Low, medium or high. Applies as soon as the photos in hand finish."""
+        if level not in SPEED_LEVELS:
+            level = "medium"
+        process, upload, budget = speed_limits(level)
+        fixed_process, fixed_upload = self._fixed
+        self._speed = level
+        self._process_slots.set_limit(fixed_process or process)
+        self._upload_slots.set_limit(fixed_upload or upload)
+        self._budget.set_limit(budget)
+        log.info("speed %s: %d processing, %d uploading", level, process, upload)
 
     def set_paced(self, paced: bool) -> int:
         """Paced mode waits for a go-ahead after copying and again before uploading.
@@ -306,6 +391,8 @@ class Pipeline:
             return
         self._stopping.set()
         self._copy_q.put(None)
+        self._process_slots.close()
+        self._upload_slots.close()
         for _ in self._threads:
             self._process_q.put(None)
         self._upload_q.close()
@@ -538,16 +625,19 @@ class Pipeline:
 
     # ------------------------------------------------------------ processing
     def _process_loop(self) -> None:
-        while True:
-            task = self._process_q.get()
-            if task is None or self._stopping.is_set():
-                return
+        while self._process_slots.acquire():
             try:
-                self._process_one(task)
-            except Exception:
-                log.exception("process worker failed on %s", task[1])
+                task = self._process_q.get()
+                if task is None or self._stopping.is_set():
+                    return
+                try:
+                    self._process_one(task)
+                except Exception:
+                    log.exception("process worker failed on %s", task[1])
+                finally:
+                    self._dequeued("process", task)
             finally:
-                self._dequeued("process", task)
+                self._process_slots.release()
 
     def _process_one(self, task: Task) -> None:
         found = self._lookup(task)
@@ -601,19 +691,22 @@ class Pipeline:
 
     # ------------------------------------------------------------- uploading
     def _upload_loop(self) -> None:
-        while True:
-            task = self._upload_q.get()
-            if task is None:
-                return
-            delay: float | None = None
+        while self._upload_slots.acquire():
             try:
-                delay = self._upload_one(task)
-            except Exception:
-                log.exception("upload worker failed on %s", task[1])
-            if delay is None:
-                self._dequeued("upload", task)
-            else:
-                self._upload_q.put(task, delay)
+                task = self._upload_q.get()
+                if task is None:
+                    return
+                delay: float | None = None
+                try:
+                    delay = self._upload_one(task)
+                except Exception:
+                    log.exception("upload worker failed on %s", task[1])
+                if delay is None:
+                    self._dequeued("upload", task)
+                else:
+                    self._upload_q.put(task, delay)
+            finally:
+                self._upload_slots.release()
 
     def _uploader(self, destination: str) -> Uploader:
         with self._lock:

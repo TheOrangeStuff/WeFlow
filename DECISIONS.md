@@ -394,6 +394,19 @@ separate updater framework.
 - Versions before 1.9.0 can only offer **Download**, so getting onto 1.9.0 is one last
   manual install.
 
+## 1.12.0 — Speed setting (FR-25)
+
+- **Three levels, not a free number** (the owner asked for Low / Medium / High). Medium is
+  the spec's old fixed behaviour, so nothing changes until a user moves the slider.
+- **High** runs `cpu_count - 1` processing workers, 4 uploads and a 240 MP pixel budget
+  (about 2 GB). NFR-08's 1 GB cap now holds for Medium only. Card copying is unchanged
+  at every level: it is limited by the card reader, not the computer.
+- **Changes apply live.** The pipeline starts enough threads for High once, and an
+  adjustable slot count decides how many may work at a time. A worker that already holds
+  a photo finishes it before a lower limit takes effect.
+- **The slider lives in Settings**, not on the working face, which already has its four
+  controls (UI-05). It uses the accent colour like the toggles; it isn't a status.
+
 ## 1.11.0 — Flickr albums sorted by date taken (FR-31a)
 
 - **Sorting is a fixed order, not Flickr's sort setting.** Flickr's public API has no call

@@ -40,3 +40,17 @@ def test_screenshot_every_state(qtbot, window, bridge, event, name: str, scheme:
     assert shot.save(str(ARTIFACTS / f"main-{name}-{scheme}.png"))
     assert (shot.width(), shot.height()) == (560, 760)
     theme.set_scheme("light")
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_screenshot_settings(qtbot, window, bridge, scheme: str) -> None:  # type: ignore[no-untyped-def]
+    from WeFlow.ui.settings_dialog import SettingsDialog
+
+    theme.set_scheme(scheme)
+    dialog = SettingsDialog(bridge, window)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    dialog.speed.slider.set_level("high")
+    qtbot.wait(300)
+    ARTIFACTS.mkdir(exist_ok=True)
+    assert dialog.grab().save(str(ARTIFACTS / f"settings-{scheme}.png"))

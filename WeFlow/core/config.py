@@ -104,6 +104,7 @@ class Settings:
     skipped_update: str = ""
     seen_version: str = ""  # the version whose "What's new" was last shown
     auto_eject: bool = False  # 1.10.0: eject a card once it is copied and verified
+    speed: str = "medium"  # 1.12.0: "low", "medium" or "high" (see pipeline.speed_limits)
 
 
 @dataclass

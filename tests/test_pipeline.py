@@ -617,3 +617,22 @@ def test_missing_processed_copy_is_made_again_before_upload(
     pipeline.release_held(event.id)
     recorder.wait(lambda: recorder.batches(batch.id)[-1].state == "done")
     assert len(set(fake.uploads)) == NEW_PHOTOS
+
+
+def test_speed_levels_scale_workers_and_memory() -> None:
+    from WeFlow.core.pipeline import PIXEL_BUDGET, speed_limits
+
+    assert speed_limits("low", 12) == (2, 1, PIXEL_BUDGET)
+    assert speed_limits("medium", 12) == (4, 2, PIXEL_BUDGET)  # FR-25 default
+    assert speed_limits("high", 12) == (11, 4, PIXEL_BUDGET * 2)
+    assert speed_limits("high", 2)[0] == 2
+
+
+def test_speed_change_applies_live(make_pipeline) -> None:  # type: ignore[no-untyped-def]
+    pipeline = make_pipeline(upload_workers=None)
+    pipeline.set_speed("high")
+    assert pipeline.speed == "high"
+    assert pipeline._upload_slots.limit == 4
+    pipeline.set_speed("nonsense")
+    assert pipeline.speed == "medium"
+    assert pipeline._upload_slots.limit == 2
