@@ -396,6 +396,9 @@ separate updater framework.
 
 ## 1.13.1 — Highlights slider (FR-21b), gentler white balance default (1.13.0 never shipped)
 
+- **CI tests on macOS and Windows only** (the owner asked). WeFlow never shipped for
+  Linux; the Linux test job only re-ran the same tests, and it hung once on the 1.13.1
+  tag. Local development on Linux still works (`QT_QPA_PLATFORM=offscreen pytest`).
 - **Released as 1.13.1.** The v1.13.0 tag was pushed while GitHub Actions could not run
   (billing), then What's new (FR-45) was added. A new version avoids force-moving a pushed
   tag. Nothing was ever built or published as 1.13.0.
