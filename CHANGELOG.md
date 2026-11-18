@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.13.0 — 2026-11-17
+
+- New Highlights slider in the event's Look settings. Move it left to tone down bright
+  skies and white shirts, or right to brighten them.
+- Auto white balance now starts at a gentler Strength of 40 for new events, which suits
+  modern cameras' own colour better. Events you already set up keep their setting.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.12.0 — 2026-11-17
 
 - New Speed setting in Settings: Low, Medium or High.

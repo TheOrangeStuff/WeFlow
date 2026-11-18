@@ -586,6 +586,12 @@ class EventEditor(QDialog):
         self.auto_tone = Toggle(event.auto_tone)
         self.shadows = SliderRow("Shadows", -100, 100, round(event.shadows * 100), suffix="")
         self.shadows.setToolTip("Brighten (right) or deepen (left) the dark parts of photos.")
+        self.highlights = SliderRow(
+            "Highlights", -100, 100, round(event.highlights * 100), suffix=""
+        )
+        self.highlights.setToolTip(
+            "Tone down (left) or brighten (right) the bright parts, such as skies and white shirts."
+        )
 
         self.watermark = Toggle(event.watermark)
         self.watermark_thumb = QLabel()
@@ -645,6 +651,7 @@ class EventEditor(QDialog):
         left.addWidget(self.wb_strength)
         left.addWidget(toggle_row("Auto tone", self.auto_tone))
         left.addWidget(self.shadows)
+        left.addWidget(self.highlights)
         left.addWidget(separator())
         left.addWidget(label("Watermark", "heading"))
         left.addWidget(toggle_row("Add a watermark", self.watermark))
@@ -783,6 +790,7 @@ class EventEditor(QDialog):
         for slider in (
             self.wb_strength,
             self.shadows,
+            self.highlights,
             self.size,
             self.opacity,
             self.margin,
@@ -832,6 +840,7 @@ class EventEditor(QDialog):
             wb_strength=self.wb_strength.value() / 100,
             auto_tone=self.auto_tone.isChecked(),
             shadows=self.shadows.value() / 100,
+            highlights=self.highlights.value() / 100,
             watermark=self.watermark.isChecked(),
             watermark_path=self._watermark_path,
             watermark_position=self.position.position(),

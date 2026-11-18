@@ -394,6 +394,22 @@ separate updater framework.
 - Versions before 1.9.0 can only offer **Download**, so getting onto 1.9.0 is one last
   manual install.
 
+## 1.13.0 — Highlights slider (FR-21b), gentler white balance default
+
+- **Highlights mirrors Shadows** (`v + k·v²·(1−v)`), so it fits the existing lookup table
+  and costs nothing per photo. Negative pulls bright tones down, as in Lightroom.
+- **Considered and left out** (from an outside Lightroom-style processing proposal):
+  Clarity, Texture, extra sharpening and noise reduction. Camera JPEGs are already
+  sharpened and denoised, a second pass on 8-bit data risks halos and rough skin, and
+  full-size blurs would slow every photo during a live event. Runner detection would
+  ship a machine-learning model in both installers. Vibrance is deferred until it can be
+  judged on real photos.
+- **Auto WB default strength 0.4** (was 0.6; the owner asked for a lower default).
+  Modern cameras' own white balance is good, and gray-world guesses wrong on scenes
+  dominated by one colour. Saved events store their strength, so only new events change.
+- **`tools/compare_looks.py`** writes before/after pairs for a folder of real photos so
+  Look changes can be judged on the owner's own pictures. It is not in the app or builds.
+
 ## 1.12.0 — Speed setting (FR-25)
 
 - **Three levels, not a free number** (the owner asked for Low / Medium / High). Medium is

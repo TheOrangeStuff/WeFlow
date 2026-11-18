@@ -120,9 +120,10 @@ class Profile:
     flickr_privacy: str = "private"
     keywords: str = ""
     auto_wb: bool = True
-    wb_strength: float = 0.6
+    wb_strength: float = 0.4  # 1.13.0: was 0.6; saved events keep their own value
     auto_tone: bool = True
     shadows: float = 0.0  # 1.10.0: -1 deepens, +1 lifts
+    highlights: float = 0.0  # 1.13.0: -1 pulls down, +1 brightens
     watermark: bool = False
     watermark_path: str = ""
     watermark_position: str = "br"

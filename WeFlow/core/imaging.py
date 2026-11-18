@@ -33,6 +33,7 @@ GAMMA_MIN, GAMMA_MAX = 0.72, 1.35
 BLACK_MAX, WHITE_MIN = 0.12, 0.80
 MEDIAN_TARGET, MEDIAN_PULL = 0.46, 0.6
 SHADOW_LIFT, SHADOW_DEEPEN = 1.5, 0.6  # curve strength at +100 and -100
+HIGHLIGHT_RECOVER, HIGHLIGHT_BOOST = 1.5, 0.6  # curve strength at -100 and +100
 ANALYSIS_EDGE = 256
 _TRANSPOSE = {
     2: Image.Transpose.FLIP_LEFT_RIGHT,
@@ -104,12 +105,26 @@ def shadow_curve(values: Floats, amount: float) -> Floats:
     return curved
 
 
+def highlight_curve(values: Floats, amount: float) -> Floats:
+    """Pull down (``amount`` < 0) or brighten (> 0) the highlights; ``amount`` is -1..1.
+
+    ``v + k·v²·(1-v)`` mirrors the shadow curve: it peaks two thirds of the way up and
+    leaves black, white and the shadows almost untouched. With ``k`` in (-3, 1) the curve
+    never folds.
+    """
+    amount = min(1.0, max(-1.0, amount))
+    k = amount * (HIGHLIGHT_BOOST if amount > 0 else HIGHLIGHT_RECOVER)
+    curved: Floats = np.clip(values + k * values**2 * (1.0 - values), 0.0, 1.0)
+    return curved
+
+
 def build_lut(
     gains: tuple[float, float, float],
     black: float,
     white: float,
     gamma: float,
     shadows: float = 0.0,
+    highlights: float = 0.0,
 ) -> list[int]:
     ramp = np.arange(256, dtype=np.float32) / 255.0
     table: list[int] = []
@@ -118,13 +133,15 @@ def build_lut(
         values = np.clip((values - black) / (white - black), 0.0, 1.0) ** gamma
         if shadows:
             values = shadow_curve(values, shadows)
+        if highlights:
+            values = highlight_curve(values, highlights)
         table.extend(int(v) for v in np.rint(values * 255.0))
     return table
 
 
 def look_lut(img: Image.Image, profile: Profile) -> list[int] | None:
     """The lookup table for this image and event, or ``None`` when nothing changes."""
-    if not (profile.auto_wb or profile.auto_tone or profile.shadows):
+    if not (profile.auto_wb or profile.auto_tone or profile.shadows or profile.highlights):
         return None
     thumb = img.copy() if max(img.size) <= ANALYSIS_EDGE else img.resize(_fit(img.size))
     pixels = (np.asarray(thumb, dtype=np.float32) / 255.0).reshape(-1, 3)
@@ -133,7 +150,7 @@ def look_lut(img: Image.Image, profile: Profile) -> list[int] | None:
     if profile.auto_tone:
         balanced = np.clip(pixels * np.array(gains, dtype=np.float32), 0.0, 1.0)
         black, white, gamma = tone_params(balanced @ LUMA)
-    return build_lut(gains, black, white, gamma, profile.shadows)
+    return build_lut(gains, black, white, gamma, profile.shadows, profile.highlights)
 
 
 def _fit(size: tuple[int, int], edge: int = ANALYSIS_EDGE) -> tuple[int, int]:

@@ -91,9 +91,10 @@ Fields carry over from v0.1 `Profile`, with these changes:
 | `album_name` | str | `""` | *(1.4.0)* The gallery's name when picked from the list (FR-39); display only, `""` when typed or pasted |
 | `flickr_privacy` | enum | `"private"` | private, friends, family, friends+family, public |
 | `keywords` | str | `""` | comma-separated |
-| `auto_wb` / `wb_strength` | bool / float 0–1 | true / 0.6 | |
+| `auto_wb` / `wb_strength` | bool / float 0–1 | true / 0.4 | *(1.13.0)* default strength was 0.6 |
 | `auto_tone` | bool | true | |
 | `shadows` | float −1…1 | 0 | *(1.10.0)* Lift (+) or deepen (−) the shadows (FR-21a) |
+| `highlights` | float −1…1 | 0 | *(1.13.0)* Pull down (−) or brighten (+) the highlights (FR-21b) |
 | `watermark` + `watermark_path/position/scale/opacity/margin` | | as v0.1 | |
 | `max_long_edge` | int | 0 | 0 = full size |
 | `jpeg_quality` | int 0–100 | 92 | Lightroom's range (1.2.0; was 60–100) |
@@ -160,9 +161,11 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
 - **FR-20** Auto white balance: gray-world on mid-tones with saturated pixels excluded (v0.1 `wb_gains`).
   - *(1.10.0)* Saturation is judged after a first gray-world pass (clamped to the gain limits), so a strong cast such as tungsten light still finds its neutral pixels.
   - Gains are blended toward 1.0 by the strength setting and clamped to [0.7, 1.6].
+  - *(1.13.0)* The default strength is 0.4 (was 0.6). Events saved before keep their own value.
 - **FR-21** Auto tone: luminance percentiles 0.3 / 99.7 set the black and white points (black ≤ 0.12, white ≥ 0.80).
   - A gamma correction moves the median 60% of the way toward 0.46, clamped to [0.72, 1.35].
 - **FR-21a** *(1.10.0)* Shadows slider (−100…+100, default 0): the curve `v + k·v·(1−v)²` after auto tone, with `k = 1.5·amount` to lift and `0.6·amount` to deepen, so it never folds. Applies whether or not auto tone is on.
+- **FR-21b** *(1.13.0)* Highlights slider (−100…+100, default 0): the curve `v + k·v²·(1−v)` after Shadows, with `k = 1.5·amount` to pull down and `0.6·amount` to brighten, so it never folds. Applies whether or not auto tone is on.
 - **FR-22** Watermark: the PNG is scaled to `scale × short edge` and placed at one of 5 positions with a margin, at the set opacity.
   - It must look identical on portrait and landscape photos.
 - **FR-23** Apply EXIF orientation before the watermark, then write orientation = 1.
@@ -297,7 +300,7 @@ Transfer follows the newest batch. Process and Upload also follow it, except tha
 - **Event editor** — a sheet (macOS) or dialog (Windows), about 640 px wide. *(1.10.0)* It is resizable, never narrower than its settings column needs (at least 320 px, so toggles are never cut off at large text sizes), and never bigger than the screen.
   - Left column holds 4 groups, each with a heading:
     - **Destination:** where, album (*1.8.1:* a Choose Gallery… button that opens a list of the user's galleries, FR-39, with Create a gallery… at the top, FR-41), privacy, hold toggle.
-    - **Look:** auto WB with strength slider, auto tone, *(1.10.0)* Shadows slider (FR-21a).
+    - **Look:** auto WB with strength slider, auto tone, *(1.10.0)* Shadows slider (FR-21a), *(1.13.0)* Highlights slider (FR-21b).
     - **Watermark:** toggle, file picker with thumbnail, position as a 3×3 grid picker (corners + center only enabled), size slider, opacity slider.
     - **Export** *(1.2.0)*: preset picker (Save as preset… / Delete preset), file naming, custom text and start number (only when the rule uses them), an example file name, quality slider, Limit file size toggle and size.
   - Rarely changed fields (resize, margin) sit in a collapsed "More" section.

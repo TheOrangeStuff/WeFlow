@@ -242,3 +242,14 @@ def test_fr27_quality_accepts_full_lightroom_range(tmp_path: Path) -> None:
     imaging.process_file(source, low, Profile(name="q", jpeg_quality=5))
     assert Profile(name="q", jpeg_quality=0).validate() == {}
     assert low.stat().st_size < source.stat().st_size
+
+
+def test_fr21b_highlights_pull_down_and_brighten_bright_tones_only() -> None:
+    ramp = np.linspace(0, 1, 256, dtype=np.float32)
+    down, up = imaging.highlight_curve(ramp, -1.0), imaging.highlight_curve(ramp, 1.0)
+    assert down[0] == 0 and down[-1] == pytest.approx(1.0) and up[-1] == pytest.approx(1.0)
+    assert down[170] < ramp[170] - 0.15 and up[170] > ramp[170] + 0.05
+    assert abs(down[15] - ramp[15]) < 0.01
+    assert np.all(np.diff(up) >= 0) and np.all(np.diff(down) >= 0)  # never folds
+    flat = Profile(name="h", auto_wb=False, auto_tone=False)
+    assert imaging.look_lut(synthetic_photo(1), replace(flat, highlights=-0.5)) is not None
