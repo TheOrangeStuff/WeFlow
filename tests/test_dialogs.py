@@ -724,22 +724,6 @@ def test_editor_form_is_never_cut_off(qtbot, window, bridge, event) -> None:  # 
     qtbot.waitUntil(lambda: form.width() <= editor._form_scroll.viewport().width(), timeout=2000)
 
 
-def test_settings_speed_slider_saves_and_applies(qtbot, window, bridge, store) -> None:  # type: ignore[no-untyped-def]
-    from PySide6.QtCore import Qt
-
-    dialog = SettingsDialog(bridge, window)
-    qtbot.addWidget(dialog)
-    dialog.show()
-    assert dialog.speed.level == "medium"
-    dialog.speed.slider.setFocus()
-    qtbot.keyClick(dialog.speed.slider, Qt.Key.Key_Right)
-    assert store.settings.speed == "high"
-    assert dialog.speed.name.text() == "High"
-    qtbot.waitUntil(lambda: bridge.pipeline.speed == "high", timeout=3000)
-    qtbot.keyClick(dialog.speed.slider, Qt.Key.Key_Home)
-    assert store.settings.speed == "low"
-
-
 def test_settings_whats_new_shows_every_version(qtbot, window, bridge) -> None:  # type: ignore[no-untyped-def]
     dialog = SettingsDialog(bridge, window)
     qtbot.addWidget(dialog)

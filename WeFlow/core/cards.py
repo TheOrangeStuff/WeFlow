@@ -156,11 +156,8 @@ def find_cards() -> list[Card]:
     if sys.platform == "win32":
         return _windows_cards()
     if sys.platform == "darwin":
-        parents = [Path("/Volumes")]
-    else:  # Linux, for development only
-        user = os.environ.get("USER", "")
-        parents = [Path("/media") / user, Path("/run/media") / user]
-    return [Card(p, p.name) for parent in parents for p in _subfolders(parent) if _has_dcim(p)]
+        return [Card(p, p.name) for p in _subfolders(Path("/Volumes")) if _has_dcim(p)]
+    return []  # WeFlow ships for macOS and Windows only; elsewhere use WeFlow_FAKE_VOLUMES
 
 
 def eject(path: Path) -> tuple[bool, str]:
@@ -190,10 +187,7 @@ def eject(path: Path) -> tuple[bool, str]:
             )
             ok = done.returncode == 0
         else:
-            done = subprocess.run(
-                ["umount", str(path)], capture_output=True, timeout=30, check=False
-            )
-            ok = done.returncode == 0
+            ok = False
     except (OSError, subprocess.SubprocessError):
         return False, failed
     return (True, "Card ejected.") if ok else (False, failed)

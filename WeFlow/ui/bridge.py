@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QImage
+from PySide6.QtGui import QDesktopServices, QImage, QImageReader
 
 from WeFlow import __version__
 from WeFlow.core import (
@@ -672,5 +672,45 @@ class Bridge(QObject):
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
+
+        self.run(job, lambda result: done(result if isinstance(result, QImage) else None))
+
+    def latest_photo(self, event_id: str, edge: int, done: Callable[[Any], None]) -> None:
+        """The event's newest photo, upright, at most ``edge`` px and in black and white,
+        for the main window's hero (1.14.0). ``done`` gets a QImage or None."""
+        event = self.store.get(event_id)
+        if event is None:
+            done(None)
+            return
+        root = self.store.event_root(event)
+
+        def job() -> QImage | None:
+            newest: tuple[float, Path] | None = None
+            for folder in (root / "processed", root / "originals"):
+                if not folder.is_dir():
+                    continue
+                for path in folder.rglob("*"):
+                    if path.suffix.lower() not in (".jpg", ".jpeg"):
+                        continue
+                    try:
+                        stamp = path.stat().st_mtime
+                    except OSError:
+                        continue
+                    if newest is None or stamp > newest[0]:
+                        newest = (stamp, path)
+                if newest is not None:
+                    break  # a processed photo is the better picture
+            if newest is None:
+                return None
+            reader = QImageReader(str(newest[1]))
+            reader.setAutoTransform(True)
+            size = reader.size()
+            if size.isValid() and max(size.width(), size.height()) > edge:
+                size.scale(edge, edge, Qt.AspectRatioMode.KeepAspectRatio)
+                reader.setScaledSize(size)
+            image = reader.read()
+            if image.isNull():
+                return None
+            return image.convertToFormat(QImage.Format.Format_Grayscale8)
 
         self.run(job, lambda result: done(result if isinstance(result, QImage) else None))

@@ -35,7 +35,7 @@ All decisions are made once per event, before the shoot. **Inserting a card asks
 | Packaging | PyInstaller (one-folder) → `.app` in a `.dmg` on macOS, `.exe` installer via Inno Setup on Windows | Build scripts in `packaging/` |
 | Tests | `pytest`, `pytest-qt` | Must run headless (`QT_QPA_PLATFORM=offscreen`) |
 | Lint/format | `ruff` (lint + format), `mypy --strict` on `WeFlow/core` | |
-| CI | GitHub Actions matrix: `macos-latest`, `windows-latest`, `ubuntu-latest` (tests only on Ubuntu) | |
+| CI | GitHub Actions matrix: `macos-latest`, `windows-latest` *(1.14.0: the Ubuntu test job was dropped)* | |
 
 Dependencies are pinned in `pyproject.toml`. No other runtime dependencies without recording why in `DECISIONS.md`.
 
@@ -250,23 +250,25 @@ Acceptance test for the design: from about 2 m away, someone can tell (a) which 
 ### 7.1 Principles (apply to every screen)
 1. **One working screen.** Setup lives in separate sheets and dialogs.
 2. **Show state, not controls.** Actions appear only when they apply.
-3. **Calm and flat.** Use whitespace instead of borders: no gradients, no drop shadows heavier than token `shadow-1`, one accent colour.
+3. **Calm and flat.** Use whitespace instead of borders: no gradients, no drop shadows heavier than token `shadow-1`, one accent colour. *(1.14.0: the one gradient is the fade of the hero photo into `bg`, §7.2.)*
 4. **Colour means status only:** green = safe or done, amber = working or held, red = needs attention. Always pair a colour with an icon or a word.
 5. **No modal dialogs while working.** The only exception is choosing an event when none is active.
 
 ### 7.2 Main window: the working face
 
-Default size 560×760; minimum 480×640 *(1.10.0; was 560×720 / 480×600)*. One column, 24 px outer padding. From top to bottom:
+Default size 960×720; minimum 760×640 *(1.14.0; was 560×760 / 480×640)*. 32 px side padding. From top to bottom, with 1 px `border` lines between the first three:
 
 | # | Element | Spec |
 |---|---|---|
-| 1 | **Top bar** (48 px) | App name left (`type-heading`). Right: an "Auto ◯ Paced" switch (FR-38), Pause/Resume toggle (icon + label) and a Settings gear icon button. **No other always-visible controls (UI-05).** |
-| 2 | **Event card** | `surface-2` background, radius 12, padding 16. Line 1: event name (`type-title`). Line 2 (`type-secondary`): destination · album · "Watermark" · "Held" (only those that apply). Right side: "Switch ▾" text button that opens a popover list of events + "New event…" + "Edit this event…". (UI-01) |
-| 3 | **Status panel** — takes the remaining vertical space above the list | States below (§7.3). Radius 16, padding 24. (UI-02, UI-03) |
-| 4 | **Earlier cards** list | Header `type-label` "Earlier cards". Rows 44 px: `Card label · N photos` left; status chip right; contextual action (Retry / Release / Open folder) as a text button left of the chip, **only when applicable** (UI-04, UI-06). Newest first. Rows from previous app sessions are hidden after they reach `done`. Max 3 visible *(1.10.0; was 5)*, then the list scrolls. |
+| 1 | **Top bar** (80 px) | Left: the brand, a "WF" mark in `accent` and "WeFlow", both bold italic. Middle: **Speed** *(1.14.0, moved from Settings)*: "SPEED" and a three-stop slider, LOW · DEFAULT · MAX (FR-25), the stop names under the track. Right: an Auto \| Paced pill with the chosen half filled in `accent` (FR-38), Pause/Resume (icon + label) and a Settings gear. **No other always-visible controls (UI-05).** |
+| 2 | **Upload destination** | "Upload destination" in `text-2`, a 1 px upright line, then the event name (20/700) over destination · album · "Watermark" · "Held" (only those that apply). Right: an outline "Switch ▾" button that opens the list of events + "New event…" + "Edit this event…". (UI-01) |
+| 3 | **Hero** — takes the remaining space | Left: the status icon (52 px, status colour) beside the headline (bold italic, 34–60 px with the window), the subline under it (20 px, `text-2`) and the state's buttons (48 px tall). Right: the active event's newest photo in black and white, covering about two thirds of the width and fading into `bg` toward the words. No photo yet: plain `bg`. Under the hero: the three stages (§7.3). (UI-02, UI-03) |
+| 4 | **Earlier cards** list | Header `type-label` "Earlier cards". Rows 44 px: `Card label · N photos` left; status chip right; contextual action (Retry / Release / Open folder) as a text button left of the chip, **only when applicable** (UI-04, UI-06). Newest first. Rows from previous app sessions are hidden after they reach `done`. Max 2 visible *(1.14.0; was 3)*, then the list scrolls. Hidden when empty. |
 | 5 | **Activity drawer** handle | Bottom, 32 px, "Activity ›" in `type-secondary`. Opens a 320 px drawer with the log from the right edge (UI-07). Errors also appear as row state; the log is never the only place an error shows. |
 
 ### 7.3 Status panel states
+
+*(1.14.0)* The hero has no tinted background any more: the status colour is carried by the icon beside the headline and by the words. The Background column below is kept for history.
 
 | State | Background | Headline (`type-display`, 28 pt) | Subline | Extras |
 |---|---|---|---|---|
@@ -281,16 +283,16 @@ Default size 560×760; minimum 480×640 *(1.10.0; was 560×720 / 480×600)*. One
 | Attention | `bad-tint` + 2 px `bad` border | "Needs attention" | One-line reason | **Retry** (primary), "Details" opens the drawer |
 | Copy error | `bad-tint` | "Don't remove yet — copy failed" | Reason + "Re-insert the card to try again" | Retry |
 
-The headline and subline follow the most recent batch. *(1.10.0)* Under them sit **three stages** in columns — **Transfer · Process · Upload** — split by faint 1 px `border` separators. Each stage is a 28 px line icon (card, sliders, cloud-upload) in a 64 px ring, with the stage name in capitals (`type-heading`), a stats line (`type-secondary`, e.g. "120 / 248 · 38.2 MB/s"), a status word in the status colour and the card's label (`type-label`) underneath. The stage states are:
+The headline and subline follow the most recent batch. *(1.14.0)* Under the hero sit **three stages** in a row — **Transfer · Process · Upload** — split by faint 1 px `border` separators. Each stage is a 44 px line icon (card, sliders, cloud-upload) with the stage name (22/600) beside it, a status word under the name ("Idle" when there is nothing to do) and, while there is something to say, a stats line with the card's label (`type-secondary`, e.g. "CARD_A · 120 / 248 · 38.2 MB/s"). The stage states are:
 
-| Stage state | Ring | Word (examples) |
+| Stage state | Icon | Word (examples) |
 |---|---|---|
-| Pending | 3 px `border` ring, dimmed icon | — |
-| Active | `warn` arc that fills with progress (a quarter arc goes round while the total is unknown), plus a soft halo that breathes outwards | "Keep card in", "Tuning", "Uploading" |
-| Waiting (Paced / Held) | full `warn` ring | "Press Process", "Press Upload" |
-| Done | filled `good` circle with a tick that pops in (240 ms) | "Safe to remove", "Ejected", "Verified", "Done", "<service>" |
-| Error | `bad` ring with a ✕ | "Copy failed", "Needs attention" |
-| Off | dashed `border` ring | "Library only" (event has no destination) |
+| Pending | stage icon in `text` | "Idle" |
+| Active | stage icon in `warn-strong`, breathing; a thin `warn` bar under the words fills with progress (a short bar slides while the total is unknown) | "Keep card in", "Tuning", "Uploading" |
+| Waiting (Paced / Held) | stage icon in `warn-strong` | "Press Process", "Press Upload" |
+| Done | a `good-strong` tick in a circle that pops in (240 ms) | "Safe to remove", "Ejected", "Verified", "Done", "<service>" |
+| Error | `bad-strong` warning triangle | "Copy failed", "Needs attention" |
+| Off | dimmed stage icon | "Library only" (event has no destination) |
 
 Transfer follows the newest batch. Process and Upload also follow it, except that a stage the newest batch has not reached yet shows an earlier batch that is in that stage right now, so a new card can copy while the one before it uploads. The motion stops when nothing is active, and is off when `WeFlow_NO_MOTION` is set.
 
@@ -313,7 +315,7 @@ Transfer follows the newest batch. Process and Upload also follow it, except tha
   - API key fields stay hidden until the user clicks "Use my own API key…".
   - Card-detected sound on/off.
   - *(1.10.0)* "Eject the card when it's copied" on/off (default off, FR-16).
-  - *(1.12.0)* Speed: a three-stop slider, Low / Medium / High (FR-25), with a three-bar meter and one line saying what the level does.
+  - *(1.14.0)* Speed moved to the main window's top bar (§7.2).
   - Start at login on/off (Should).
 - **First run:** 3 steps in one window — library folder → connect a service (skippable) → create the first event. Then the main window opens.
 - **Tray / menu-bar icon** with 4 states (idle, working, safe, attention). Its menu: Show WeFlow, Pause watching, Quit.
@@ -334,7 +336,7 @@ Follow the OS theme live: on macOS listen to `QStyleHints.colorScheme`, and do t
 | `border` | #E4E4E7 | #2E2E33 |
 | `text` | #111114 | #F4F4F5 |
 | `text-2` | #6B6B73 | #A1A1AA |
-| `accent` | #2563EB | #60A5FA |
+| `accent` | #157A3A *(1.14.0; was #2563EB)* | #1DB954 *(1.14.0; was #60A5FA)* |
 | `good` | #16A34A | #22C55E |
 | `warn` | #D97706 | #F59E0B |
 | `bad` | #DC2626 | #F87171 |

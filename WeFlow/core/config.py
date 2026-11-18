@@ -64,7 +64,7 @@ def app_data_dir() -> Path:
         return Path.home() / "Library" / "Application Support" / APP_NAME
     if sys.platform == "win32":
         return Path(os.environ.get("APPDATA", str(Path.home()))) / APP_NAME
-    return Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local" / "share"))) / APP_NAME
+    return Path.home() / f".{APP_NAME}"  # development on other systems only
 
 
 def default_library() -> Path:

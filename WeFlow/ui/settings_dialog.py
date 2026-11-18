@@ -1,4 +1,4 @@
-"""Settings: library, SmugMug / Flickr, speed, sound, auto-eject, start at login (§7.4)."""
+"""Settings: library, SmugMug / Flickr, sound, auto-eject, start at login (§7.4)."""
 
 from __future__ import annotations
 
@@ -23,7 +23,6 @@ from .whats_new import WhatsNew
 from .widgets import busy as busy_cover
 from .widgets.chip import Chip
 from .widgets.common import Button, Toggle, label, separator
-from .widgets.speed_meter import SpeedMeter
 
 
 class ServiceRow(QFrame):
@@ -246,8 +245,6 @@ class SettingsDialog(QDialog):
 
         self.library = LibraryRow(bridge)
         self.services = {service: ServiceRow(bridge, service) for service in SERVICES}
-        self.speed = SpeedMeter(bridge.settings.speed)
-        self.speed.changed.connect(bridge.set_speed)
         self.sound = Toggle(bridge.settings.card_sound)
         self.sound.setAccessibleName("Card-detected sound")
         self.sound.toggled.connect(lambda on: bridge.update_settings(card_sound=on))
@@ -288,8 +285,6 @@ class SettingsDialog(QDialog):
             if index:
                 column.addSpacing(4)
             column.addWidget(row)
-        column.addWidget(separator())
-        column.addWidget(self.speed)
         column.addWidget(separator())
         for caption, toggle in (
             ("Play a sound when a card is detected", self.sound),

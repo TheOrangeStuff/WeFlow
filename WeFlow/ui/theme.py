@@ -23,7 +23,7 @@ LIGHT = {
     "border": "#E4E4E7",
     "text": "#111114",
     "text-2": "#6B6B73",
-    "accent": "#2563EB",
+    "accent": "#157A3A",  # 1.14.0: green, as in the new main screen
     "good": "#16A34A",
     "warn": "#D97706",
     "bad": "#DC2626",
@@ -35,7 +35,7 @@ DARK = {
     "border": "#2E2E33",
     "text": "#F4F4F5",
     "text-2": "#A1A1AA",
-    "accent": "#60A5FA",
+    "accent": "#1DB954",
     "good": "#22C55E",
     "warn": "#F59E0B",
     "bad": "#F87171",
@@ -52,7 +52,16 @@ TYPE = {  # name: (px, weight, colour token)
     "body": (13, 400, "text"),
     "secondary": (12, 400, "text-2"),
     "label": (11, 500, "text-2"),
+    # 1.14.0: the main screen (DECISIONS 1.14.0)
+    "brand": (26, 800, "text"),
+    "brand-mark": (26, 900, "accent"),
+    "hero": (56, 800, "text"),
+    "hero-sub": (20, 400, "text-2"),
+    "dest": (20, 700, "text"),
+    "dest-sub": (14, 400, "text-2"),
+    "stage": (22, 600, "text"),
 }
+ITALIC = ("brand", "brand-mark", "hero")
 ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
 AA_TEXT = 4.5
 
@@ -125,17 +134,10 @@ def build_qss(t: dict[str, str], arrow: str = "") -> str:
         f"color: {t[colour]}; background: transparent; }}"
         for name, (px, weight, colour) in TYPE.items()
     )
+    type_rules += "\n" + "\n".join(f'QLabel[type="{n}"] {{ font-style: italic; }}' for n in ITALIC)
     panel_rules = "\n".join(
-        f'QFrame#StatusPanel[tone="{tone}"] {{ background: {t[bg]}; '
-        f"border: 2px solid {t[edge]}; border-radius: {RADIUS_PANEL}px; }}"
-        for tone, bg, edge in (
-            ("neutral", "surface-2", "surface-2"),
-            ("warn", "warn-tint", "warn-tint"),
-            ("good", "good-tint", "good-tint"),
-            ("good-edge", "good-tint", "good"),
-            ("bad", "bad-tint", "bad-tint"),
-            ("bad-edge", "bad-tint", "bad"),
-        )
+        f'QFrame#StatusPanel[tone="{tone}"] {{ background: transparent; border: none; }}'
+        for tone in ("neutral", "warn", "good", "good-edge", "bad", "bad-edge")
     )
     chip_rules = "\n".join(
         f'QFrame#Chip[tone="{tone}"] {{ background: {t[bg]}; border-radius: 11px; }}\n'
@@ -155,6 +157,7 @@ QMainWindow, QDialog, QWidget#Page {{ background: {t["bg"]}; }}
 QLabel {{ background: transparent; }}
 {type_rules}
 QLabel[tinted="true"] {{ color: {t["text"]}; }}
+
 QLabel[type="error"] {{ font-size: 12px; color: {t["bad-strong"]}; }}
 QLabel[type="thumb"] {{ background: {t["border"]}; border-radius: 6px; }}
 
@@ -164,7 +167,17 @@ QFrame#Card {{ background: {t["surface"]}; border: 1px solid {t["border"]};
 QFrame#NoticeBar {{ background: {t["surface"]}; border: 1px solid {t["border"]};
     border-radius: {RADIUS_CARD}px; }}
 QFrame#Drawer {{ background: {t["surface"]}; border-left: 1px solid {t["border"]}; }}
-QFrame#StageSeparator {{ background: {t["border"]}; border: none; }}
+QFrame#StageSeparator, QFrame#VSeparator {{ background: {t["border"]}; border: none; }}
+QFrame#Segmented {{ background: transparent; border: 1px solid {t["text-2"]};
+    border-radius: 18px; }}
+QPushButton[kind="segment"] {{ min-height: 34px; max-height: 34px; padding: 0 20px;
+    border-radius: 17px; border: none; background: transparent; color: {t["text"]};
+    font-size: 15px; font-weight: 600; }}
+QPushButton[kind="segment"]:hover {{ background: {t["hover"]}; }}
+QPushButton[kind="segment"]:checked {{ background: {t["accent"]}; color: {t["on-accent"]}; }}
+QPushButton[kind="segment"]:focus {{ border: 2px solid {t["accent"]}; padding: 0 18px;
+    min-height: 30px; max-height: 30px; }}
+QPushButton[kind="segment"]:checked:focus {{ border: 2px solid {t["text"]}; }}
 QFrame#Separator {{ background: {t["border"]}; max-height: 1px; min-height: 1px; border: none; }}
 {panel_rules}
 {chip_rules}
@@ -218,6 +231,12 @@ QPushButton[kind="cell"]:disabled {{ background: {t["surface-2"]};
     border-color: {t["surface-2"]}; }}
 QPushButton[kind="cell"]:focus {{ border: 2px solid {t["accent"]}; padding: 0;
     min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; }}
+QPushButton[scale="large"] {{ min-height: 48px; max-height: 48px; padding: 0 28px;
+    font-size: 20px; font-weight: 700; }}
+QPushButton[scale="large"]:focus {{ min-height: 46px; max-height: 46px; padding: 0 27px; }}
+QPushButton[scale="medium"] {{ min-height: 38px; max-height: 38px; padding: 0 16px;
+    font-size: 15px; font-weight: 600; }}
+QPushButton[scale="medium"]:focus {{ min-height: 36px; max-height: 36px; padding: 0 15px; }}
 QPushButton::menu-indicator {{ image: none; width: 0; }}
 
 QLineEdit, QComboBox, QSpinBox {{ min-height: {CONTROL_HEIGHT - 2}px;
@@ -276,7 +295,7 @@ class Theme(QObject):
         super().__init__()
         self.scheme = "light"
         self.t = tokens("light")
-        self._icons: dict[tuple[str, str, int, str], QPixmap] = {}
+        self._icons: dict[tuple[str, str, int, str, float, bool], QPixmap] = {}
         self._sources: dict[str, str] = {}
         self.arrows: dict[str, str] = {}  # scheme -> chevron file for dropdowns
 
@@ -314,15 +333,26 @@ class Theme(QObject):
             palette.setColor(role, self.color(token))
         return palette
 
-    def pixmap(self, name: str, token: str = "text", size: int = 16, ratio: float = 2.0) -> QPixmap:
-        """A bundled line icon drawn in a token colour with a 1.5 px stroke."""
-        key = (name, token, size, self.scheme)
+    def pixmap(
+        self,
+        name: str,
+        token: str = "text",
+        size: int = 16,
+        ratio: float = 2.0,
+        stroke: float = 1.5,
+        filled: bool = False,
+    ) -> QPixmap:
+        """A bundled line icon drawn in a token colour with a ``stroke`` px line;
+        ``filled`` also fills its shapes (the big pause and play glyphs)."""
+        key = (name, token, size, self.scheme, stroke, filled)
         cached = self._icons.get(key)
         if cached is not None:
             return cached
         svg = self._svg(name)
+        if filled:
+            svg = svg.replace('fill="none"', 'fill="currentColor"')
         svg = svg.replace("currentColor", self.t[token])
-        svg = svg.replace('stroke-width="2"', f'stroke-width="{1.5 * 24 / size:.2f}"')
+        svg = svg.replace('stroke-width="2"', f'stroke-width="{stroke * 24 / size:.2f}"')
         pixmap = QPixmap(QSize(round(size * ratio), round(size * ratio)))
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
@@ -344,8 +374,8 @@ class Theme(QObject):
                 )
         return self._sources[name]
 
-    def icon(self, name: str, token: str = "text", size: int = 16) -> QIcon:
-        return QIcon(self.pixmap(name, token, size))
+    def icon(self, name: str, token: str = "text", size: int = 16, filled: bool = False) -> QIcon:
+        return QIcon(self.pixmap(name, token, size, filled=filled))
 
 
 theme = Theme()

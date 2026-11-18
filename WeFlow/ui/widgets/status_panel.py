@@ -1,14 +1,17 @@
 """The status panel: the one thing to read from across the room (SPEC §7.3).
 
 1.10.0: the small 4-step tracker and progress bar became three big stages (Transfer,
-Process, Upload) in ``stages.py``. The headline still says the one thing that matters.
+Process, Upload) in ``stages.py``. 1.14.0: a big headline with its status icon on the
+left of a hero area, the newest photo in black and white fading in from the right,
+and the stages in a row along the bottom.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from PySide6.QtCore import QPropertyAnimation, Qt, Signal
+from PySide6.QtCore import QPropertyAnimation, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPaintEvent, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsOpacityEffect,
@@ -20,13 +23,14 @@ from PySide6.QtWidgets import (
 )
 
 from ..bridge import Batch, duration, plural, service_name, speed
-from .common import MOTION_MS, Button, label, motion_enabled, restyle
+from ..theme import theme
+from .common import MOTION_MS, Button, Icon, label, motion_enabled, restyle, separator
 from .stages import IDLE_STAGES, StageStrip, StageView, stages_for
 
 # state -> (panel tone, icon, icon colour token)
 LOOKS = {
     "idle": ("neutral", "card-sim", "text-2"),
-    "paused": ("neutral", "circle-pause", "text-2"),
+    "paused": ("neutral", "pause", "accent"),
     "copying": ("warn", "hourglass", "warn-strong"),
     "safe": ("good-edge", "circle-check", "good-strong"),
     "working": ("neutral", "refresh-cw", "text-2"),
@@ -171,6 +175,54 @@ def _headline_for(
     return PanelView("done", "All done", sub, **common)
 
 
+FILLED = ("pause",)  # glyphs drawn solid, as in the design
+HERO_ICON = 52
+PHOTO_SHARE = 0.68  # of the hero's width, from the right edge
+FADE_SHARE = 0.45  # of the photo's width that fades into the background
+
+
+class HeroArea(QWidget):
+    """The space behind the headline: the photo on the right, fading out to the left."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.photo: QImage | None = None
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        theme.changed.connect(self.update)
+
+    def set_photo(self, photo: QImage | None) -> None:
+        self.photo = None if photo is None or photo.isNull() else photo
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802 - Qt naming
+        if self.photo is None:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        area = QRectF(
+            self.width() * (1 - PHOTO_SHARE), 0, self.width() * PHOTO_SHARE, self.height()
+        )
+        if area.width() < 8 or area.height() < 8:
+            return
+        # Cover the area, cropping the photo's centre.
+        image = self.photo
+        scale = max(area.width() / image.width(), area.height() / image.height())
+        crop_w, crop_h = area.width() / scale, area.height() / scale
+        source = QRectF((image.width() - crop_w) / 2, (image.height() - crop_h) / 2, crop_w, crop_h)
+        painter.drawImage(area, image, source)
+        # Fade into the window colour, so the words on the left stay easy to read.
+        ground = theme.color("bg")
+        clear = QColor(ground)
+        clear.setAlpha(0)
+        fade = QLinearGradient(area.left(), 0, area.left() + area.width() * FADE_SHARE, 0)
+        fade.setColorAt(0.0, ground)
+        fade.setColorAt(1.0, clear)
+        painter.fillRect(area, fade)
+        soft = QColor(ground)
+        soft.setAlphaF(0.18)  # calm the photo a little
+        painter.fillRect(area, soft)
+
+
 class StatusPanel(QFrame):
     """Shows one ``PanelView``. Buttons appear only in the states they apply to."""
 
@@ -186,24 +238,28 @@ class StatusPanel(QFrame):
         super().__init__()
         self.setObjectName("StatusPanel")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.setMinimumHeight(240)
+        self.setMinimumHeight(280)
         self.view = PanelView()
         self._fade: QLabel | None = None
         self._fade_anim: QPropertyAnimation | None = None
 
-        self.headline = label("", "display", wrap=True)
-        self.subline = label("", "body", wrap=True)
-        for text in (self.headline, self.subline):
-            text.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.hero = HeroArea()
+        self.icon = Icon("card-sim", "text-2", HERO_ICON, stroke=4.0)
+        self.headline = label("", "hero", wrap=True)
+        self.subline = label("", "hero-sub", wrap=True)
         self.stages = StageStrip()
 
-        self.eject = Button("Eject", "good", icon="eject", icon_token="good-strong")
-        self.open_folder = Button("Open folder", "outline")
-        self.release = Button("Upload", "primary", icon="cloud-upload", icon_token="on-accent")
-        self.process = Button("Process", "primary")
-        self.retry = Button("Retry", "primary")
-        self.details = Button("Details", "outline")
-        self.resume = Button("Resume", "outline", icon="play")
+        self.eject = Button("Eject", "good", icon="eject", icon_token="good-strong", size="large")
+        self.open_folder = Button("Open folder", "outline", size="large")
+        self.release = Button(
+            "Upload", "primary", icon="cloud-upload", icon_token="on-accent", size="large"
+        )
+        self.process = Button("Process", "primary", size="large")
+        self.retry = Button("Retry", "primary", size="large")
+        self.details = Button("Details", "outline", size="large")
+        self.resume = Button(
+            "Resume", "primary", icon="play", icon_token="on-accent", size="large", filled=True
+        )
         for button, tip in (
             (self.eject, "Eject the card so you can take it out."),
             (self.open_folder, "Show this event's photos on your computer."),
@@ -232,49 +288,56 @@ class StatusPanel(QFrame):
 
         self._button_box = QWidget()
         button_row = QHBoxLayout(self._button_box)
-        button_row.setContentsMargins(0, 16, 0, 0)
-        button_row.setSpacing(8)
+        button_row.setContentsMargins(0, 32, 0, 0)
+        button_row.setSpacing(12)
         self._all_buttons = (
             self.process,
             self.eject,
             self.release,
             self.retry,
+            self.resume,
             self.open_folder,
             self.details,
-            self.resume,
         )
         for button in self._all_buttons:
             button_row.addWidget(button)
-        button_row.insertStretch(0, 1)
         button_row.addStretch(1)
 
-        column = QVBoxLayout(self)
-        column.setContentsMargins(24, 24, 24, 24)
-        column.setSpacing(0)
-        self._event_box = QVBoxLayout()
-        self._event_box.setContentsMargins(0, 0, 0, 0)
-        column.addLayout(self._event_box)
-        column.addStretch(1)
-        column.addWidget(self.headline)
-        column.addSpacing(4)
-        column.addWidget(self.subline)
-        column.addSpacing(24)
-        column.addWidget(self.stages)
-        column.addWidget(self._button_box)
-        column.addStretch(1)
-        self._event_line: QWidget | None = None
-        self._apply(self.view)
+        head = QHBoxLayout()
+        head.setContentsMargins(0, 0, 0, 0)
+        head.setSpacing(24)
+        head.addWidget(self.icon, 0, Qt.AlignmentFlag.AlignVCenter)
+        head.addWidget(self.headline, 1)
+        self._words = QWidget()
+        words = QVBoxLayout(self._words)
+        words.setContentsMargins(40, 0, 0, 0)
+        words.setSpacing(4)
+        words.addStretch(1)
+        words.addLayout(head)
+        words.addWidget(self.subline)
+        words.addWidget(self._button_box)
+        words.addStretch(1)
+        hero_row = QHBoxLayout(self.hero)
+        hero_row.setContentsMargins(0, 0, 0, 0)
+        hero_row.addWidget(self._words)
+        hero_row.addStretch(1)
 
-    def set_event_line(self, widget: QWidget) -> None:
-        """Show the "Photos go to <event>  Switch" line under the headline (UI-01)."""
-        self._event_line = widget
-        self._event_box.setContentsMargins(0, 0, 0, 12)
-        self._event_box.addWidget(widget)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
+        column.addWidget(self.hero, 1)
+        column.addWidget(separator())
+        column.addSpacing(8)
+        column.addWidget(self.stages)
         self._apply(self.view)
 
     @property
     def state(self) -> str:
         return self.view.state
+
+    def set_photo(self, photo: QImage | None) -> None:
+        """The newest photo of the event, already black and white (or None)."""
+        self.hero.set_photo(photo)
 
     def visible_buttons(self) -> list[str]:
         return [b.text() for b in self._all_buttons if not b.isHidden()]
@@ -288,15 +351,12 @@ class StatusPanel(QFrame):
 
     def _apply(self, view: PanelView) -> None:
         self.view = view
-        tone = LOOKS[view.state][0]
+        tone, icon, token = LOOKS[view.state]
         restyle(self, tone=tone)
-        tinted = tone != "neutral"
-        restyle(self.subline, tinted=tinted)
+        self.icon.set_icon(icon, token, filled=icon in FILLED)
         self.headline.setText(view.headline)
         self.subline.setText(view.subline)
-        # Idle: the event line already says where photos go.
-        said_by_line = view.state == "idle" and self._event_line is not None
-        self.subline.setVisible(bool(view.subline) and not said_by_line)
+        self.subline.setVisible(bool(view.subline))
         self.stages.set_views(view.stages)
         shown = self._buttons.get(view.state, ())
         if view.state == "ready" and not view.card:
@@ -305,6 +365,13 @@ class StatusPanel(QFrame):
             button.setVisible(button in shown)
         self._button_box.setVisible(bool(shown))
         self.setAccessibleName(f"{view.headline}. {view.subline}")
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt naming
+        super().resizeEvent(event)
+        # The words take the left part of the hero; the headline grows with the window.
+        self._words.setMaximumWidth(max(320, int(self.width() * 0.7)))
+        px = max(34, min(60, self.width() // 18))
+        self.headline.setStyleSheet(f"font-size: {px}px;")
 
     def set_ejecting(self, busy: bool) -> None:
         self.eject.setEnabled(not busy)

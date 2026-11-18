@@ -23,7 +23,7 @@ def test_spec_token_values(scheme: str) -> None:
     alpha = 0.16 if scheme == "dark" else 0.12
     for status in ("good", "warn", "bad"):
         assert t[f"{status}-tint"] == mix(t[status], t["surface"], alpha)
-    assert LIGHT["accent"] == "#2563EB" and DARK["bg"] == "#111113"
+    assert LIGHT["accent"] == "#157A3A" and DARK["bg"] == "#111113"
 
 
 @pytest.mark.parametrize("scheme", SCHEMES)

@@ -1,12 +1,17 @@
-"""The working face: one column, state first, controls only when they apply (§7.2)."""
+"""The working face: state first, controls only when they apply (§7.2).
+
+1.14.0: top bar (brand, Speed, Auto/Paced, Pause, Settings), the upload destination,
+a hero with the big headline over the newest photo, and the three stages along the
+bottom.
+"""
 
 from __future__ import annotations
 
 import os
 from dataclasses import replace
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QCloseEvent, QShowEvent
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QCloseEvent, QImage, QShowEvent
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -30,12 +35,17 @@ from .widgets import (
     stages_for,
     view_for,
 )
+from .widgets.common import separator
 from .widgets.notice_bar import NoticeBar
+from .widgets.speed_meter import SpeedControl
 
-MAX_ROWS = 3  # 1.10.0: the stages need the room; the list scrolls after 3
+MAX_ROWS = 2  # 1.14.0: the hero needs the room; the list scrolls after 2
 ROW_HEIGHT = 44
 DONE_FADE_MS = 10_000
 NOTICE_MS = 5_000
+PHOTO_EDGE = 1600  # longest side of the hero photo
+SIZE = (960, 720)
+MINIMUM = (760, 640)
 
 
 PAUSE_TIPS = {
@@ -55,8 +65,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.bridge = bridge
         self.setWindowTitle("WeFlow")
-        self.resize(560, 760)
-        self.setMinimumSize(480, 640)
+        self.resize(*SIZE)
+        self.setMinimumSize(*MINIMUM)
         self.done_fade_ms = DONE_FADE_MS
         self.can_hide_to_tray = False
         self._batches: dict[int, Batch] = {}
@@ -72,32 +82,43 @@ class MainWindow(QMainWindow):
         self._ejected: set[int] = set()  # batches whose card WeFlow ejected
         self._auto_ejecting: set[int] = set()  # batches auto-eject has been tried for
         self._ejecting: dict[str, int] = {}  # card path -> batch, while an eject runs
+        self._photo_key: tuple[object, ...] = ()  # what the hero photo was last loaded for
 
         page = QWidget()
         page.setObjectName("Page")
         page.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.setCentralWidget(page)
 
-        # 1. Top bar: name, Auto/Paced, Pause/Resume, Settings. Nothing else is always
-        #    visible (UI-05, widened for the mode switch: DECISIONS 52).
+        # 1. Top bar: brand; Speed; Auto/Paced, Pause/Resume, Settings (UI-05, widened
+        #    for the mode switch and, in 1.14.0, Speed: DECISIONS).
+        self.speed = SpeedControl(bridge.settings.speed)
+        self.speed.changed.connect(self.bridge.set_speed)
         self.mode = ModeSwitch(bridge.settings.paced)
         self.mode.toggled.connect(self.bridge.set_paced)
         self.pause = Button("Pause", "quiet", icon="pause", icon_token="text-2")
         self.pause.clicked.connect(self._toggle_pause)
-        self.settings = Button(kind="icon", icon="settings", icon_token="text-2", tip="Settings")
+        self.settings = Button(kind="icon", icon="settings", icon_token="text", tip="Settings")
+        self.settings.setIconSize(QSize(22, 22))
         self.settings.clicked.connect(self.settings_requested)
+        brand = QHBoxLayout()
+        brand.setSpacing(12)
+        brand.addWidget(label("WF", "brand-mark"))
+        brand.addWidget(label("WeFlow", "brand"))
         top = QHBoxLayout()
-        top.setContentsMargins(0, 0, 0, 0)
-        top.setSpacing(4)
-        top.addWidget(label("WeFlow", "heading"), 1)
+        top.setContentsMargins(12, 0, 0, 0)
+        top.setSpacing(16)
+        top.addLayout(brand)
+        top.addStretch(1)
+        top.addWidget(self.speed)
+        top.addStretch(1)
         top.addWidget(self.mode)
         top.addWidget(self.pause)
         top.addWidget(self.settings)
         top_bar = QWidget()
-        top_bar.setFixedHeight(48)
+        top_bar.setFixedHeight(80)
         top_bar.setLayout(top)
 
-        # 2. Event line ("Photos go to <event>  Switch"), shown inside the status panel
+        # 2. Upload destination: "<event> / <where>" and Switch
         self.event_card = EventCard()
         self.event_card.switch_requested.connect(self.bridge.set_active)
         self.event_card.new_requested.connect(self._new_event)
@@ -120,7 +141,6 @@ class MainWindow(QMainWindow):
         self.panel.details_clicked.connect(lambda: self.drawer.open_drawer())
         self.panel.open_folder_clicked.connect(self._open_folder)
         self.panel.resume_clicked.connect(lambda: self._set_paused(False))
-        self.panel.set_event_line(self.event_card)
 
         # 4. Earlier cards
         self.earlier_label = label("Earlier cards", "label")
@@ -150,22 +170,23 @@ class MainWindow(QMainWindow):
         self.bottom_bar.setLayout(bottom)
 
         column = QVBoxLayout(page)
-        column.setContentsMargins(24, 0, 24, 8)
+        column.setContentsMargins(32, 0, 32, 8)
         column.setSpacing(0)
         column.addWidget(top_bar)
-        column.addSpacing(8)
-        column.addWidget(self.notice_bar)
+        column.addWidget(separator())
+        column.addWidget(self.event_card)
+        column.addWidget(separator())
         self._notice_gap = QWidget()
         self._notice_gap.setFixedHeight(12)
         column.addWidget(self._notice_gap)
+        column.addWidget(self.notice_bar)
         column.addWidget(self.panel, 1)
         self._list_gap = QWidget()
-        self._list_gap.setFixedHeight(24)
+        self._list_gap.setFixedHeight(16)
         column.addWidget(self._list_gap)
         column.addWidget(self.earlier_label)
         column.addSpacing(4)
         column.addWidget(self.earlier)
-        column.addSpacing(8)
         column.addWidget(self.bottom_bar)
 
         self.drawer = ActivityDrawer(page)
@@ -224,6 +245,8 @@ class MainWindow(QMainWindow):
 
         self._sync_rows([b for b in visible if current is None or b.id != current.id])
         self.mode.set_paced(self.bridge.settings.paced)
+        self.speed.set_level(self.bridge.settings.speed)
+        self._want_photo(current)
         self.pause.setText("Resume" if paused else "Pause")
         self.pause.setToolTip(PAUSE_TIPS[paused])
         self.pause.set_icon("play" if paused else "pause")
@@ -245,6 +268,27 @@ class MainWindow(QMainWindow):
 
     def status(self) -> str:
         return self._status
+
+    def _want_photo(self, current: Batch | None) -> None:
+        """Show the newest photo of the active event behind the headline. It is looked
+        for again when the event changes and as each card's photos land."""
+        active = self.bridge.active()
+        if active is None:
+            self._photo_key = ()
+            self.panel.set_photo(None)
+            return
+        key: tuple[object, ...] = (active.id,)
+        if current is not None and current.event_id == active.id:
+            key += (current.id, current.state)
+        if key == self._photo_key:
+            return
+        self._photo_key = key
+
+        def show(image: object) -> None:
+            if self._photo_key == key:
+                self.panel.set_photo(image if isinstance(image, QImage) else None)
+
+        self.bridge.latest_photo(active.id, PHOTO_EDGE, show)
 
     def _stages(
         self, current: Batch, visible: list[Batch], card_in: bool

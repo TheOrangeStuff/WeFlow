@@ -1,5 +1,5 @@
-"""The event line inside the status panel: "Photos go to <event>" and the way to switch
-(UI-01, FR-02)."""
+"""The destination row under the top bar: "Upload destination | <event> / <where>" and
+the Switch button (UI-01, FR-02). 1.14.0: was a line inside the status panel."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QMenu, QSizePolicy, QVBoxLayo
 
 from ..bridge import Profile, service_name
 from ..theme import theme
-from .common import Button, label
+from .common import Button, label, vseparator
 
 
 def album_display(event: Profile) -> str:
@@ -51,41 +51,44 @@ class EventCard(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._events: list[Profile] = []
         self._active_id = ""
-        self.prefix = label("Photos go to", "body")
-        self.name = label("", "heading")
-        self.summary = label("", "secondary")
+        self.prefix = label("Upload destination", "dest-sub")
+        self.name = label("", "dest")
+        self.summary = label("", "dest-sub")
         self.switch = Button(
-            "Switch", "text", icon="chevron-down", icon_token="accent", icon_after=True
+            "Switch",
+            "outline",
+            icon="chevron-down",
+            icon_token="text",
+            icon_after=True,
+            size="medium",
         )
         self.switch.setAccessibleName("Switch event")
         self.switch.setToolTip("Choose which event new cards go into, or make a new one.")
         self.switch.clicked.connect(self.open_switcher)
         self.menu = QMenu(self)
 
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(6)
+        text = QVBoxLayout()
+        text.setContentsMargins(0, 0, 0, 0)
+        text.setSpacing(2)
+        text.addWidget(self.name)
+        text.addWidget(self.summary)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(12, 16, 0, 16)
+        row.setSpacing(24)
         row.addWidget(self.prefix)
-        row.addWidget(self.name)
+        row.addWidget(vseparator(56))
+        row.addLayout(text, 1)
         row.addWidget(self.switch)
-        row.addStretch(1)
-        column = QVBoxLayout(self)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(2)
-        column.addLayout(row)
-        column.addWidget(self.summary)
         self.set_events([], None)
 
     def set_events(self, events: list[Profile], active: Profile | None) -> None:
         self._events = sorted(events, key=lambda e: e.name.casefold())
         self._active_id = active.id if active else ""
         if active is None:
-            self.prefix.hide()
             self.name.setText("No event chosen")
             self.summary.setText("Choose or create an event to begin")
             self.switch.setText("Choose")
         else:
-            self.prefix.show()
             self.name.setText(active.name if len(active.name) <= 40 else active.name[:39] + "…")
             self.summary.setText(event_summary(active))
             self.switch.setText("Switch")

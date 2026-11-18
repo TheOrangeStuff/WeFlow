@@ -270,11 +270,12 @@ def test_pause_stops_card_watching(qtbot, window, bridge, tmp_path) -> None:  # 
 def test_ui05_at_most_four_always_visible_controls(qtbot, window) -> None:  # type: ignore[no-untyped-def]
     visible = [b for b in window.findChildren(Button) if b.isVisible()]
     names = sorted(b.accessibleName() or b.text() for b in visible)
-    assert names == ["Pause", "Settings", "Switch event"]
-    assert window.mode.isVisible()  # the fourth: Auto/Paced (DECISIONS 52)
+    # Auto/Paced is one control in two halves (DECISIONS 52); Speed sits beside it (1.14.0).
+    assert names == ["Auto mode", "Paced mode", "Pause", "Settings", "Switch event"]
+    assert window.speed.isVisible()
     assert not window.earlier_label.isVisible() and not window.activity.isVisible()
-    assert (window.width(), window.height()) == (560, 760)
-    assert (window.minimumWidth(), window.minimumHeight()) == (480, 640)
+    assert (window.width(), window.height()) == (960, 720)
+    assert (window.minimumWidth(), window.minimumHeight()) == (760, 640)
 
 
 def test_earlier_cards_newest_first_and_previous_sessions_hidden(  # type: ignore[no-untyped-def]
@@ -294,7 +295,7 @@ def test_earlier_cards_newest_first_and_previous_sessions_hidden(  # type: ignor
     labels = [row.batch.label for row in rows]
     assert labels == [f"CARD_{i}" for i in range(6, -1, -1)] + ["OLD_STUCK"]  # newest first
     assert "OLD" not in labels  # done in an earlier session
-    assert window.earlier.height() == 3 * 44  # three rows show, the rest scroll
+    assert window.earlier.height() == 2 * 44  # two rows show, the rest scroll
     assert window.panel.view.batch_id == 107
 
 
@@ -362,3 +363,20 @@ def test_bridge_ignores_work_after_shutdown(bridge, event) -> None:  # type: ign
     assert bridge.submit("/nowhere", "CARD", True) is True
     bridge.retry(None)
     bridge.run(lambda: None)
+
+
+def test_fr25_speed_in_top_bar_saves_and_applies(qtbot, window, bridge, store, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.delenv("WeFlow_NO_MOTION", raising=False)
+    window.show()
+    slider = window.speed.slider
+    before = slider.pos()
+    assert window.speed.level == "medium"
+    slider.setFocus()
+    qtbot.keyClick(slider, Qt.Key.Key_Right)
+    assert store.settings.speed == "high" and "Max" in window.speed.toolTip()
+    qtbot.waitUntil(lambda: bridge.pipeline.speed == "high", timeout=3000)
+    qtbot.wait(250)  # let the knob finish sliding
+    # 1.12.0 glitch: the knob animation moved the whole slider, not just the knob.
+    assert slider.pos() == before and slider._pos == 2.0
+    qtbot.keyClick(slider, Qt.Key.Key_Home)
+    assert store.settings.speed == "low"

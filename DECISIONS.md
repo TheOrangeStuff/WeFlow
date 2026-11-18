@@ -80,8 +80,10 @@ owner and accepted on 2026-11-11.
     tokens to its own plain SQLite file, against NFR-06.
 23. **The app has no API keys of its own** (replaces the earlier plan to bake keys in at
     packaging time; see decision 37). Each user enters their own key.
-24. **Fake volumes "eject" successfully without touching anything.** Linux is supported
-    for development only (`/media/$USER`, `/run/media/$USER`, `umount`).
+24. **Fake volumes "eject" successfully without touching anything.** *(1.14.0)* WeFlow is
+    macOS and Windows only. On other systems it finds no real cards (use
+    `WeFlow_FAKE_VOLUMES`) and keeps its data in `~/.WeFlow`; the Linux card and
+    `umount` code was removed.
 
 ## Interface
 
@@ -495,3 +497,37 @@ At the owner's request:
   sizes the rows grew wider than that and the toggles were cut off (the right-arrow key
   scrolled them into view). The column now sizes to its widest row (at least 320 px), long
   toggle captions wrap, and the dialog is resizable but never bigger than the screen.
+
+## 1.14.0 — new main screen, Speed in the top bar
+
+- **The main screen follows the owner's mockup** (a wide, dark screen: brand and
+  Auto | Paced on top, the upload destination under it, a big headline over a photo, and
+  the three stages along the bottom). SPEC §7.2, §7.3 and §7.5 were updated to match.
+  Deviations from the old §7, all asked for by the mockup:
+  - **Green accent** (`#157A3A` light, `#1DB954` dark) instead of blue. Both pass AA as
+    text on every neutral surface. In dark mode the label on a green button is `bg`
+    (near black), because white on a bright green fails AA.
+  - **The hero has no tinted panel.** Status colour is carried by the icon beside the
+    headline and by the words, so colour still always comes with an icon or a word.
+  - **One gradient**: the hero photo fades into `bg`. It is painted, not in the QSS.
+  - **Bigger window** (960×720, minimum 760×640) and **2 earlier-card rows** before the
+    list scrolls (was 3), so the hero keeps its room.
+- **The hero photo is the active event's newest photo** (processed if any are kept,
+  otherwise the originals), in black and white. The mockup used a stock photo; WeFlow has
+  none to ship, and the user's own latest shot is more useful. It is found and decoded on
+  a worker thread (`Bridge.latest_photo`), again when the event or the newest card's
+  state changes. With no photos yet, the hero is plain.
+- **Pause stays in the top bar** as a small "Pause" / "Resume" button. The mockup shows
+  only the paused state (where the big Resume button is), but watching must still be
+  pausable from the other states.
+- **Speed moved from Settings to the top bar, labelled LOW · DEFAULT · MAX** (the owner
+  asked). That makes five always-visible controls (UI-05 said four); the owner asked for
+  it. The stored values stay `low`, `medium` and `high`, so settings files from 1.12.0
+  and 1.13.x keep working.
+- **The speed slider glitch on macOS** came from naming the knob's animated Qt property
+  `pos`, which QWidget already has: the animation moved the whole slider over the
+  heading. It is now `knob`. The same trap with `size` was avoided for the new big
+  buttons (their style property is `scale`). A test checks the slider stays put.
+- **Linux code removed**: card discovery under `/media` and `/run/media`, and ejecting
+  with `umount`. See decision 24.
+

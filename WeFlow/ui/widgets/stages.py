@@ -1,8 +1,9 @@
-"""The three stages of the working face: Transfer · Process · Upload (1.10.0, UI-02).
+"""The three stages along the bottom of the working face: Transfer · Process · Upload.
 
-Each stage is a big line icon inside a ring. While a stage works, the ring fills with
-its progress and a soft halo breathes around it; once it is finished the ring becomes
-a green tick. Colour always comes with a word under the ring (§7.1 rule 4).
+1.14.0: each stage is a big line icon with the stage name and a status word beside it
+("Idle" until it has something to do). While a stage works, its icon breathes, a thin
+bar under the words fills with progress and the stats show; once it is finished the
+icon turns into a green tick. Colour always comes with a word (§7.1 rule 4).
 """
 
 from __future__ import annotations
@@ -10,8 +11,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from PySide6.QtCore import QEasingCurve, QPointF, QRectF, QSize, Qt, QVariantAnimation
-from PySide6.QtGui import QColor, QFont, QPainter, QPaintEvent, QPen
+from PySide6.QtCore import QEasingCurve, QRectF, QSize, Qt, QVariantAnimation
+from PySide6.QtGui import QFont, QFontMetricsF, QPainter, QPaintEvent
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QSizePolicy, QWidget
 
 from ..bridge import Batch, plural, service_name, speed
@@ -21,13 +22,13 @@ from .common import motion_enabled
 STAGES = ("Transfer", "Process", "Upload")
 ICONS = ("card-sim", "sliders-horizontal", "cloud-upload")
 STATE_NAMES = ("pending", "active", "waiting", "done", "error", "off")
-RING = 64  # ring diameter
-ICON = 28
-STROKE = 3
-HALO = 6  # how far the halo breathes out
+ICON = 44
+GAP = 20  # between the icon and the words
 PULSE_MS = 1600
 POP_MS = 240
-HEIGHT = RING + HALO * 2 + 12 + 16 + 4 + 16 + 2 + 16 + 2 + 14
+HEIGHT = 112
+IDLE_WORD = "Idle"
+TONES = {"active": "warn", "waiting": "warn", "done": "good", "error": "bad"}
 
 
 @dataclass(frozen=True)
@@ -128,7 +129,7 @@ def stages_for(
 
 
 class StageColumn(QWidget):
-    """One stage: ring, name, stats, status word and card name, all painted."""
+    """One stage: icon, name, status word, stats and progress, all painted."""
 
     def __init__(self, index: int, strip: StageStrip) -> None:
         super().__init__()
@@ -151,6 +152,13 @@ class StageColumn(QWidget):
     def name(self) -> str:
         return STAGES[self.index]
 
+    @property
+    def word(self) -> str:
+        """The status word under the name."""
+        if self.view.state == "pending":
+            return IDLE_WORD
+        return self.view.note
+
     def set_view(self, view: StageView) -> None:
         if view == self.view:
             return
@@ -167,14 +175,14 @@ class StageColumn(QWidget):
         self.update()
 
     def _describe(self) -> None:
-        parts = [self.name, self.view.note, self.view.stat, self.view.card]
+        parts = [self.name, self.word, self.view.stat, self.view.card]
         self.setAccessibleName(". ".join(p for p in parts if p))
 
     def sizeHint(self) -> QSize:  # noqa: N802 - Qt naming
-        return QSize(150, HEIGHT)
+        return QSize(240, HEIGHT)
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt naming
-        return QSize(RING + HALO * 2, HEIGHT)
+        return QSize(ICON + GAP + 80, HEIGHT)
 
     # ------------------------------------------------------------ painting
     def _font(self, kind: str) -> QFont:
@@ -184,111 +192,88 @@ class StageColumn(QWidget):
         font.setWeight(QFont.Weight(weight))
         return font
 
+    def _block_width(self, name_font: QFont, word_font: QFont) -> float:
+        texts = [(self.name, name_font), (self.word, word_font)]
+        widest = max(QFontMetricsF(f).horizontalAdvance(t) for t, f in texts if t)
+        return min(float(self.width() - 16), ICON + GAP + max(widest, 120.0))
+
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802 - Qt naming
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         view = self.view
-        centre = QPointF(self.width() / 2, HALO + RING / 2)
-        radius = RING / 2 - STROKE / 2
-        border = theme.color("border")
-        tone = {
-            "active": "warn",
-            "waiting": "warn",
-            "done": "good",
-            "error": "bad",
-        }.get(view.state, "")
-        colour = theme.color(tone) if tone else border
+        tone = TONES.get(view.state, "")
+        strong = f"{tone}-strong" if tone else ""
+        name_font = self._font("stage")
+        word_font = self._font("hero-sub")
+        word_font.setPixelSize(17)
+        stat_font = self._font("secondary")
 
-        # Breathing halo while working.
-        if view.state == "active":
-            phase = self._strip.phase
-            halo = QColor(colour)
-            halo.setAlphaF(0.28 * (1.0 - phase))
-            painter.setPen(QPen(halo, 2))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            grow = radius + STROKE + phase * HALO
-            painter.drawEllipse(centre, grow, grow)
+        # The icon and words sit together, centred in the column.
+        block = self._block_width(name_font, word_font)
+        left = max(8.0, (self.width() - block) / 2)
+        top = (HEIGHT - ICON) / 2 - 6
+        icon_rect = QRectF(left, top, ICON, ICON)
 
-        ring = QRectF(centre.x() - radius, centre.y() - radius, radius * 2, radius * 2)
         if view.state == "done":
-            scale = max(0.0, self._pop)
-            r = RING / 2 * min(1.08, scale)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(colour)
-            painter.drawEllipse(centre, r, r)
-            tick = QPen(theme.color("surface"), 3.5)
-            tick.setCapStyle(Qt.PenCapStyle.RoundCap)
-            tick.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-            painter.setPen(tick)
-            s = RING / 64 * min(1.0, scale)
-            painter.drawPolyline(
-                [
-                    QPointF(centre.x() - 12 * s, centre.y() + 1 * s),
-                    QPointF(centre.x() - 4 * s, centre.y() + 9 * s),
-                    QPointF(centre.x() + 13 * s, centre.y() - 8 * s),
-                ]
+            scale = max(0.0, min(1.08, self._pop))
+            size = ICON * scale
+            box = QRectF(
+                icon_rect.center().x() - size / 2, icon_rect.center().y() - size / 2, size, size
             )
+            pixmap = theme.pixmap("circle-check", strong, ICON, stroke=2.0)
+            painter.drawPixmap(box, pixmap, QRectF(pixmap.rect()))
         else:
-            track = QPen(border, STROKE if view.state != "off" else 1.5)
-            if view.state == "off":
-                track.setStyle(Qt.PenStyle.DashLine)
-            painter.setPen(track)
-            painter.setBrush(theme.color("surface"))
-            painter.drawEllipse(ring)
-            arc = QPen(colour, STROKE)
-            arc.setCapStyle(Qt.PenCapStyle.RoundCap)
-            painter.setPen(arc)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            if view.state == "active" and view.progress is None:
-                # Progress not known yet: a quarter arc goes round.
-                start = int((90 - self._strip.turn * 360) * 16)
-                painter.drawArc(ring, start, -90 * 16)
-            elif view.state == "active":
-                span = max(0.02, min(1.0, view.progress or 0.0))
-                painter.drawArc(ring, 90 * 16, -int(span * 360 * 16))
-            elif view.state in ("waiting", "error"):
-                painter.drawEllipse(ring)
-            if view.state == "error":
-                cross = QPen(theme.color("bad-strong"), 3)
-                cross.setCapStyle(Qt.PenCapStyle.RoundCap)
-                painter.setPen(cross)
-                d = 9
-                painter.drawLine(centre + QPointF(-d, -d), centre + QPointF(d, d))
-                painter.drawLine(centre + QPointF(-d, d), centre + QPointF(d, -d))
-            else:
-                token = {"active": "warn-strong", "waiting": "warn-strong"}.get(
-                    view.state, "text-2"
-                )
-                pixmap = theme.pixmap(ICONS[self.index], token, ICON)
-                if view.state in ("pending", "off"):
-                    painter.setOpacity(0.55)
-                painter.drawPixmap(
-                    QRectF(centre.x() - ICON / 2, centre.y() - ICON / 2, ICON, ICON),
-                    pixmap,
-                    QRectF(pixmap.rect()),
-                )
-                painter.setOpacity(1.0)
+            token = strong if tone else "text"
+            name = "triangle-alert" if view.state == "error" else ICONS[self.index]
+            pixmap = theme.pixmap(name, token, ICON, stroke=2.0)
+            if view.state == "active":
+                painter.setOpacity(1.0 - 0.45 * self._strip.phase)
+            elif view.state == "off":
+                painter.setOpacity(0.45)
+            painter.drawPixmap(icon_rect, pixmap, QRectF(pixmap.rect()))
+            painter.setOpacity(1.0)
 
-        # Words under the ring.
-        width = float(self.width())
-        y = float(HALO * 2 + RING + 12)
-        lit = view.state not in ("pending", "off")
-        name_font = self._font("heading")
-        name_font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 108)
+        # Words beside the icon.
+        x = left + ICON + GAP
+        width = max(40.0, self.width() - x - 8)
+        y = top - 6
         lines: list[tuple[str, QFont, str, float]] = [
-            (self.name.upper(), name_font, "text" if lit else "text-2", 16 + 4),
-            (view.stat, self._font("secondary"), "text-2", 16 + 2),
-            (view.note, self._font("body"), f"{tone}-strong" if tone else "text-2", 16 + 2),
-            (view.card, self._font("label"), "text-2", 14),
+            (self.name, name_font, "text" if view.state != "off" else "text-2", 30),
+            (self.word, word_font, strong or "text-2", 24),
         ]
+        stat = " · ".join(p for p in (view.card, view.stat) if p)
+        if view.state not in ("pending", "off") and stat:
+            lines.append((stat, stat_font, "text-2", 18))
         for text, font, token, step in lines:
             if text:
                 painter.setFont(font)
                 painter.setPen(theme.color(token))
-                metrics = painter.fontMetrics()
-                shown = metrics.elidedText(text, Qt.TextElideMode.ElideRight, int(width) - 8)
-                painter.drawText(QRectF(0, y, width, step), Qt.AlignmentFlag.AlignHCenter, shown)
+                shown = painter.fontMetrics().elidedText(
+                    text, Qt.TextElideMode.ElideRight, int(width)
+                )
+                painter.drawText(
+                    QRectF(x, y, width, step),
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                    shown,
+                )
             y += step
+
+        # Progress under the words while working (a short bar slides while unknown).
+        if view.state == "active":
+            bar = QRectF(x, y + 6, min(width, 180.0), 3)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(theme.color("border"))
+            painter.drawRoundedRect(bar, 1.5, 1.5)
+            painter.setBrush(theme.color(tone))
+            if view.progress is None:
+                span = bar.width() * 0.3
+                start = bar.left() + (bar.width() - span) * self._strip.phase
+                painter.drawRoundedRect(QRectF(start, bar.top(), span, 3), 1.5, 1.5)
+            else:
+                share = max(0.02, min(1.0, view.progress))
+                painter.drawRoundedRect(
+                    QRectF(bar.left(), bar.top(), bar.width() * share, 3), 1.5, 1.5
+                )
 
 
 class StageStrip(QWidget):
@@ -308,9 +293,9 @@ class StageStrip(QWidget):
                 line = QFrame()
                 line.setObjectName("StageSeparator")
                 line.setFixedWidth(1)
-                line.setFixedHeight(RING + HALO * 2)
+                line.setFixedHeight(HEIGHT - 16)
                 self._separators.append(line)
-                row.addWidget(line, 0, Qt.AlignmentFlag.AlignTop)
+                row.addWidget(line, 0, Qt.AlignmentFlag.AlignVCenter)
             row.addWidget(column, 1)
         self.setFixedHeight(HEIGHT)
         self._clock = QVariantAnimation(self)

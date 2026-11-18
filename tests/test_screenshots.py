@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from PySide6.QtGui import QImage
 
 from tests.ui_states import CARD, EARLIER, EXPECTED_PANEL, PANEL_STATES
 from WeFlow.ui.theme import theme
@@ -16,11 +17,19 @@ from WeFlow.ui.theme import theme
 ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
 
 
+def hero_photo() -> QImage:
+    from tests.fixtures.make_card import synthetic_photo
+
+    rgb = synthetic_photo(3, (1200, 800))
+    image = QImage(rgb.tobytes(), 1200, 800, 1200 * 3, QImage.Format.Format_RGB888)
+    return image.convertToFormat(QImage.Format.Format_Grayscale8)
+
+
 @pytest.mark.parametrize("scheme", ["light", "dark"])
 @pytest.mark.parametrize("name", list(PANEL_STATES))
 def test_screenshot_every_state(qtbot, window, bridge, event, name: str, scheme: str) -> None:  # type: ignore[no-untyped-def]
     theme.set_scheme(scheme)
-    window.resize(560, 760)
+    window.resize(960, 720)
     sample, card_in, paused = PANEL_STATES[name]
     if paused:
         bridge.set_paused(True)
@@ -34,11 +43,12 @@ def test_screenshot_every_state(qtbot, window, bridge, event, name: str, scheme:
         window.drawer.add("info", "CARD_B: safe to remove. 180 photos copied and verified.")
     window.refresh()
     qtbot.wait(30)
+    window.panel.set_photo(hero_photo())  # stands in for the event's newest photo
     assert window.panel.state == EXPECTED_PANEL[name]
     ARTIFACTS.mkdir(exist_ok=True)
     shot = window.grab()
     assert shot.save(str(ARTIFACTS / f"main-{name}-{scheme}.png"))
-    assert (shot.width(), shot.height()) == (560, 760)
+    assert (shot.width(), shot.height()) == (960, 720)
     theme.set_scheme("light")
 
 
@@ -50,7 +60,6 @@ def test_screenshot_settings(qtbot, window, bridge, scheme: str) -> None:  # typ
     dialog = SettingsDialog(bridge, window)
     qtbot.addWidget(dialog)
     dialog.show()
-    dialog.speed.slider.set_level("high")
     qtbot.wait(300)
     ARTIFACTS.mkdir(exist_ok=True)
     assert dialog.grab().save(str(ARTIFACTS / f"settings-{scheme}.png"))

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QKeyEvent, QMouseEvent, QPainter, QPaintEvent
+from PySide6.QtGui import QKeyEvent, QPainter, QPaintEvent
 from PySide6.QtWidgets import (
     QAbstractButton,
     QFrame,
@@ -54,23 +54,47 @@ def separator() -> QFrame:
     return line
 
 
+def vseparator(height: int = 0) -> QFrame:
+    """A 1 px upright line in ``border``."""
+    line = QFrame()
+    line.setObjectName("VSeparator")
+    line.setFixedWidth(1)
+    if height:
+        line.setFixedHeight(height)
+    return line
+
+
 class Icon(QLabel):
     """A line icon that redraws itself when the theme changes."""
 
-    def __init__(self, name: str, token: str = "text", size: int = 16) -> None:
+    def __init__(
+        self,
+        name: str,
+        token: str = "text",
+        size: int = 16,
+        stroke: float = 1.5,
+        filled: bool = False,
+    ) -> None:
         super().__init__()
         self._name, self._token, self._size = name, token, size
+        self._stroke, self._filled = stroke, filled
         self.setFixedSize(size, size)
         theme.changed.connect(self._retheme)
         self._retheme()
 
-    def set_icon(self, name: str, token: str | None = None) -> None:
+    def set_icon(self, name: str, token: str | None = None, filled: bool | None = None) -> None:
         self._name = name
         self._token = token or self._token
+        if filled is not None:
+            self._filled = filled
         self._retheme()
 
     def _retheme(self) -> None:
-        self.setPixmap(theme.pixmap(self._name, self._token, self._size))
+        self.setPixmap(
+            theme.pixmap(
+                self._name, self._token, self._size, stroke=self._stroke, filled=self._filled
+            )
+        )
 
 
 class Button(QPushButton):
@@ -88,9 +112,14 @@ class Button(QPushButton):
         icon_token: str = "text",
         icon_after: bool = False,
         tip: str = "",
+        size: str = "",
+        filled: bool = False,
     ) -> None:
         super().__init__(text)
-        self._icon, self._icon_token = icon, icon_token
+        self._icon, self._icon_token, self._filled = icon, icon_token, filled
+        self._icon_px = {"large": 22, "medium": 18}.get(size, 16)
+        if size:  # not "size": QWidget already has a property by that name
+            self.setProperty("scale", size)
         if kind:
             self.setProperty("kind", kind)
         self.setFocusPolicy(Qt.FocusPolicy.TabFocus)
@@ -101,7 +130,7 @@ class Button(QPushButton):
         if tip:
             self.setToolTip(tip)
             self.setAccessibleName(tip)
-        self.setIconSize(QSize(16, 16))
+        self.setIconSize(QSize(self._icon_px, self._icon_px))
         theme.changed.connect(self._retheme)
         self._retheme()
 
@@ -112,7 +141,7 @@ class Button(QPushButton):
 
     def _retheme(self) -> None:
         if self._icon:
-            self.setIcon(theme.icon(self._icon, self._icon_token, 16))
+            self.setIcon(theme.icon(self._icon, self._icon_token, self._icon_px, self._filled))
 
 
 class Toggle(QAbstractButton):
@@ -183,54 +212,51 @@ class Toggle(QAbstractButton):
             painter.drawRoundedRect(QRectF(1, 1, 34, 18), 9, 9)
 
 
-class ModeSwitch(QWidget):
-    """Auto ◯━ Paced: the pipeline mode. Either word, or the switch, flips it."""
+class ModeSwitch(QFrame):
+    """[ Auto | Paced ]: the pipeline mode as a two-part pill (1.14.0). The chosen half is
+    filled with the accent."""
 
     toggled = Signal(bool)  # True = paced
 
     def __init__(self, paced: bool = False) -> None:
         super().__init__()
-        self.switch = Toggle(paced)
-        self.switch.setAccessibleName("Paced mode")
-        # On the whole widget, so hovering "Auto" or "Paced" shows it too.
+        self.setObjectName("Segmented")
+        self.setFixedHeight(38)
+        # On the whole widget, so hovering either half shows it.
         self.setToolTip(
             "Auto runs every step on its own. Paced asks before processing and before uploading."
         )
-        self.auto_word = label("Auto", "secondary")
-        self.paced_word = label("Paced", "secondary")
+        self.auto_word = Button("Auto", "segment")
+        self.paced_word = Button("Paced", "segment")
+        self.auto_word.setAccessibleName("Auto mode")
+        self.paced_word.setAccessibleName("Paced mode")
         row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 8, 0)
-        row.setSpacing(8)
-        row.addWidget(self.auto_word)
-        row.addWidget(self.switch)
-        row.addWidget(self.paced_word)
-        self.switch.toggled.connect(self._changed)
+        row.setContentsMargins(1, 1, 1, 1)
+        row.setSpacing(0)
+        for button, value in ((self.auto_word, False), (self.paced_word, True)):
+            button.setCheckable(True)
+            button.setToolTip(self.toolTip())
+            button.clicked.connect(lambda _c=False, v=value: self._choose(v))
+            row.addWidget(button)
+        self._paced = paced
         self._mark(paced)
 
     def is_paced(self) -> bool:
-        return self.switch.isChecked()
+        return self._paced
 
     def set_paced(self, paced: bool) -> None:
-        if paced != self.switch.isChecked():
-            self.switch.blockSignals(True)
-            self.switch.setChecked(paced)
-            self.switch.blockSignals(False)
-            self.switch._set_knob(1.0 if paced else 0.0)
+        self._paced = paced
         self._mark(paced)
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        if self.childAt(event.position().toPoint()) in (self.auto_word, self.paced_word):
-            word = self.childAt(event.position().toPoint())
-            self.switch.setChecked(word is self.paced_word)
-        super().mousePressEvent(event)
-
-    def _changed(self, paced: bool) -> None:
-        self._mark(paced)
-        self.toggled.emit(paced)
+    def _choose(self, paced: bool) -> None:
+        changed = paced != self._paced
+        self.set_paced(paced)
+        if changed:
+            self.toggled.emit(paced)
 
     def _mark(self, paced: bool) -> None:
-        restyle(self.auto_word, type="secondary" if paced else "body")
-        restyle(self.paced_word, type="body" if paced else "secondary")
+        self.auto_word.setChecked(not paced)
+        self.paced_word.setChecked(paced)
 
 
 class ThinProgress(QWidget):

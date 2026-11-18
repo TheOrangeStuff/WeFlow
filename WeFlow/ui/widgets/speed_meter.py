@@ -1,4 +1,8 @@
-"""Speed: a three-stop slider (Low, Medium, High) with a rising-bars meter."""
+"""Speed: a three-stop slider (LOW, DEFAULT, MAX) in the main window's top bar.
+
+1.14.0: moved out of Settings. The stored values stay "low", "medium" and "high", so
+older settings files keep working; only the words on screen changed.
+"""
 
 from __future__ import annotations
 
@@ -13,21 +17,22 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtGui import QFont, QKeyEvent, QMouseEvent, QPainter, QPaintEvent
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from ..theme import TYPE, theme
 from .common import label, motion_enabled
 
 LEVELS = ("low", "medium", "high")
-NAMES = {"low": "Low", "medium": "Medium", "high": "High"}
+NAMES = {"low": "LOW", "medium": "DEFAULT", "high": "MAX"}
 CAPTIONS = {
-    "low": "Keeps most of your computer free for other work.",
-    "medium": "A balance of speed and a responsive computer.",
-    "high": "Uses nearly all of your computer to finish sooner.",
+    "low": "Low: keeps most of your computer free for other work.",
+    "medium": "Default: a balance of speed and a responsive computer.",
+    "high": "Max: uses nearly all of your computer to finish sooner.",
 }
-TRACK_H = 6
-KNOB = 18
-PAD = KNOB // 2 + 2  # room for the knob and its focus ring at either end
+TRACK_H = 4
+KNOB = 16
+PAD = 24  # room for the knob, its focus ring and the end labels
+LABELS_H = 16
 
 
 class SpeedSlider(QWidget):
@@ -39,11 +44,11 @@ class SpeedSlider(QWidget):
         super().__init__()
         self._index = LEVELS.index(level) if level in LEVELS else 1
         self._pos = float(self._index)
-        self._slide = QPropertyAnimation(self, b"pos", self)
+        self._slide = QPropertyAnimation(self, b"knob", self)
         self._slide.setDuration(160)
         self._slide.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self.setFixedHeight(KNOB + 14)
-        self.setMinimumWidth(180)
+        self.setFixedHeight(KNOB + 8 + LABELS_H)
+        self.setMinimumWidth(190)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAccessibleName("Speed")
@@ -58,14 +63,16 @@ class SpeedSlider(QWidget):
         if level in LEVELS:
             self._go(LEVELS.index(level))
 
-    def _get_pos(self) -> float:
+    def _get_knob(self) -> float:
         return self._pos
 
-    def _set_pos(self, value: float) -> None:
+    def _set_knob(self, value: float) -> None:
         self._pos = value
         self.update()
 
-    pos = Property(float, _get_pos, _set_pos)
+    # Not "pos": QWidget already has a "pos" property, and animating that one moved the
+    # whole slider around on macOS (the 1.12.0 glitch).
+    knob = Property(float, _get_knob, _set_knob)
 
     def _go(self, index: int, emit: bool = True) -> None:
         index = max(0, min(len(LEVELS) - 1, index))
@@ -75,7 +82,7 @@ class SpeedSlider(QWidget):
             self._slide.setEndValue(float(index))
             self._slide.start()
         else:
-            self._set_pos(float(index))
+            self._set_knob(float(index))
         if index != self._index:
             self._index = index
             self.setAccessibleDescription(NAMES[self.level])
@@ -92,7 +99,7 @@ class SpeedSlider(QWidget):
         return round((x - PAD) / span * (len(LEVELS) - 1))
 
     def sizeHint(self) -> QSize:
-        return QSize(240, KNOB + 14)
+        return QSize(220, KNOB + 8 + LABELS_H)
 
     # ---------------------------------------------------------------- input
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -120,7 +127,7 @@ class SpeedSlider(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        mid = self.height() / 2
+        mid = (KNOB + 8) / 2
         left, right, knob_x = self._x(0), self._x(len(LEVELS) - 1), self._x(self._pos)
         enabled = self.isEnabled()
         accent = theme.color("accent" if enabled else "text-2")
@@ -157,60 +164,23 @@ class SpeedSlider(QWidget):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawEllipse(QPointF(knob_x, mid), KNOB / 2 + 2, KNOB / 2 + 2)
 
-
-class SpeedBars(QWidget):
-    """Three rising bars, filled up to the chosen level, like a signal meter."""
-
-    def __init__(self, level: str = "medium") -> None:
-        super().__init__()
-        self._fill = float(LEVELS.index(level) + 1 if level in LEVELS else 2)
-        self._grow = QPropertyAnimation(self, b"fill", self)
-        self._grow.setDuration(200)
-        self._grow.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self.setFixedSize(22, 18)
-        theme.changed.connect(self.update)
-
-    def _get_fill(self) -> float:
-        return self._fill
-
-    def _set_fill(self, value: float) -> None:
-        self._fill = value
-        self.update()
-
-    fill = Property(float, _get_fill, _set_fill)
-
-    def show_level(self, level: str) -> None:
-        target = float(LEVELS.index(level) + 1)
-        if motion_enabled() and self.isVisible():
-            self._grow.stop()
-            self._grow.setStartValue(self._fill)
-            self._grow.setEndValue(target)
-            self._grow.start()
-        else:
-            self._set_fill(target)
-
-    def paintEvent(self, event: QPaintEvent) -> None:
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.PenStyle.NoPen)
-        width, gap, bottom = 6, 2, float(self.height())
-        for i in range(3):
-            height = bottom * (i + 1) / 3
-            rect = QRectF(i * (width + gap), bottom - height, width, height)
-            painter.setBrush(theme.color("border"))
-            painter.drawRoundedRect(rect, 1.5, 1.5)
-            share = max(0.0, min(1.0, self._fill - i))  # how much of this bar is lit
-            if share > 0:
-                lit = QRectF(
-                    rect.left(), rect.bottom() - rect.height() * share, width, rect.height() * share
-                )
-                painter.setBrush(theme.color("accent"))
-                painter.drawRoundedRect(lit, 1.5, 1.5)
+        # LOW · DEFAULT · MAX, each centred under its stop; the chosen one stands out.
+        for i, level in enumerate(LEVELS):
+            chosen = i == self._index
+            font = QFont(self.font())
+            font.setPixelSize(TYPE["label"][0])
+            font.setWeight(QFont.Weight.Bold if chosen else QFont.Weight(TYPE["label"][1]))
+            painter.setFont(font)
+            painter.setPen(theme.color("text" if chosen else "text-2"))
+            x = self._x(i)
+            painter.drawText(
+                QRectF(x - 40, KNOB + 8, 80, LABELS_H), Qt.AlignmentFlag.AlignCenter, NAMES[level]
+            )
 
 
-class SpeedMeter(QWidget):
-    """The whole control: heading row with the meter and level name, the slider,
-    stop labels underneath and one line saying what the level does."""
+class SpeedControl(QWidget):
+    """The top-bar control: "SPEED" and the slider with LOW · DEFAULT · MAX under it.
+    Hovering says what the level does."""
 
     changed = Signal(str)
 
@@ -218,33 +188,13 @@ class SpeedMeter(QWidget):
         super().__init__()
         level = level if level in LEVELS else "medium"
         self.slider = SpeedSlider(level)
-        self.bars = SpeedBars(level)
-        self.name = label(NAMES[level], "body")
-        bold = QFont(self.name.font())
-        bold.setWeight(QFont.Weight(TYPE["heading"][1]))
-        self.name.setFont(bold)
-        self.caption = label(CAPTIONS[level], "secondary", wrap=True)
-        self.stops = [label(NAMES[name], "secondary") for name in LEVELS]
-
-        head = QHBoxLayout()
-        head.setSpacing(8)
-        head.addWidget(label("Speed", "heading"), 1)
-        head.addWidget(self.bars, 0, Qt.AlignmentFlag.AlignVCenter)
-        head.addWidget(self.name)
-        stops = QHBoxLayout()
-        stops.setContentsMargins(PAD - 6, 0, PAD - 6, 0)
-        stops.addWidget(self.stops[0])
-        stops.addStretch(1)
-        stops.addWidget(self.stops[1])
-        stops.addStretch(1)
-        stops.addWidget(self.stops[2])
-        column = QVBoxLayout(self)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(4)
-        column.addLayout(head)
-        column.addWidget(self.slider)
-        column.addLayout(stops)
-        column.addWidget(self.caption)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        title = label("SPEED", "label")
+        title.setContentsMargins(0, 0, 0, LABELS_H)  # level with the track, not the words
+        row.addWidget(title, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(self.slider)
         self.slider.changed.connect(self._show)
         self._mark(level)
 
@@ -252,15 +202,18 @@ class SpeedMeter(QWidget):
     def level(self) -> str:
         return self.slider.level
 
+    def set_level(self, level: str) -> None:
+        if level in LEVELS and level != self.level:
+            self.slider.blockSignals(True)
+            self.slider.set_level(level)
+            self.slider.blockSignals(False)
+            self._mark(level)
+
     def _show(self, level: str) -> None:
-        self.bars.show_level(level)
-        self.name.setText(NAMES[level])
-        self.caption.setText(CAPTIONS[level])
         self._mark(level)
         self.changed.emit(level)
 
     def _mark(self, level: str) -> None:
-        for name, stop in zip(LEVELS, self.stops, strict=True):
-            stop.setProperty("type", "body" if name == level else "secondary")
-            stop.style().unpolish(stop)
-            stop.style().polish(stop)
+        tip = CAPTIONS[level]
+        self.setToolTip(tip)
+        self.slider.setAccessibleDescription(f"{NAMES[level]}. {tip}")

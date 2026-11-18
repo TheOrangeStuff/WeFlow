@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.14.0 — 2026-11-18
+
+- A new main screen. The headline is bigger, your newest photo shows behind it in black
+  and white, and Transfer, Process and Upload sit in a row along the bottom.
+- Speed is now on the main screen, at the top, with three stops: LOW, DEFAULT and MAX.
+  It is no longer in Settings.
+- Fixed the Speed slider jumping out of place on Mac.
+- The window opens larger, to fit the new layout.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.13.1 — 2026-11-18
 
 - New Highlights slider in the event's Look settings. Move it left to tone down bright
