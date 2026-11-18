@@ -46,7 +46,7 @@ from WeFlow.core.events import BatchUpdated, CardDetected, CardRemoved, Event, N
 from WeFlow.core.logs import recent_log, setup_logging
 from WeFlow.core.pipeline import ACTIVE_STATES, Pipeline, duration, plural, speed
 from WeFlow.core.state import Batch
-from WeFlow.core.updates import Update
+from WeFlow.core.updates import Notes, Update
 from WeFlow.core.uploaders import (
     AlbumChoice,
     PendingAuth,
@@ -68,6 +68,7 @@ __all__ = [
     "Batch",
     "Bridge",
     "ExportPreset",
+    "Notes",
     "PendingAuth",
     "Profile",
     "Settings",
@@ -414,8 +415,8 @@ class Bridge(QObject):
         """A new install has nothing "new" to announce, so this version counts as seen."""
         self.update_settings(first_run_done=True, seen_version=__version__)
 
-    def whats_new(self, done: Callable[[str, list[str]], None]) -> None:
-        """Once per version: hand this version's changes to ``done``, if it has any."""
+    def whats_new(self, done: Callable[[str, Notes], None]) -> None:
+        """Once per version: hand ``done`` the changes in every version since the last seen."""
         seen = self.settings.seen_version
         if seen == __version__:
             return
@@ -427,7 +428,16 @@ class Bridge(QObject):
             if isinstance(result, list) and result:
                 done(__version__, result)
 
-        self.run(lambda: updates.whats_new(__version__), deliver)
+        self.run(lambda: updates.whats_new_since(seen, __version__), deliver)
+
+    def release_notes(self, done: Callable[[Notes], None]) -> None:
+        """Every version's changes, newest first, for Settings › What's new."""
+
+        def deliver(result: Any) -> None:
+            if isinstance(result, list):
+                done(result)
+
+        self.run(updates.release_notes, deliver)
 
     def skip_update(self) -> None:
         """Stop offering this version in the main window. Settings still lists it."""

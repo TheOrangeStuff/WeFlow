@@ -409,6 +409,11 @@ separate updater framework.
   dominated by one colour. Saved events store their strength, so only new events change.
 - **`tools/compare_looks.py`** writes before/after pairs for a folder of real photos so
   Look changes can be judged on the owner's own pictures. It is not in the app or builds.
+- **What's new covers every skipped version (FR-45, new).** It already stored
+  `seen_version`, so it now shows each changelog section after it, newest first, in one
+  window with a heading per version. With no `seen_version` (an install older than 1.1.0)
+  only the running version is shown, as before. The public release page still carries one
+  version's notes; people read notes in the app, so that is left alone.
 
 ## 1.12.0 — Speed setting (FR-25)
 

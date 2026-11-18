@@ -6,6 +6,9 @@
   skies and white shirts, or right to brighten them.
 - Auto white balance now starts at a gentler Strength of 40 for new events, which suits
   modern cameras' own colour better. Events you already set up keep their setting.
+- If you skip an update, What's new now shows everything you missed, not only the
+  newest version.
+- New What's new button in Settings shows the changes in every version.
 - Your events, settings and sign-ins carry over unchanged.
 
 ## 1.12.0 — 2026-11-17

@@ -9,7 +9,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from . import theme as theme_module
-from .bridge import Bridge, Profile, Store, app_data_dir, setup_logging
+from .bridge import Bridge, Notes, Profile, Store, app_data_dir, setup_logging
 from .event_editor import EventEditor
 from .first_run import FirstRun
 from .main_window import MainWindow
@@ -66,8 +66,8 @@ class App:
         """Once per version, after an update: say what changed."""
         self.bridge.whats_new(self.open_whats_new)
 
-    def open_whats_new(self, version: str, items: list[str]) -> WhatsNew:
-        dialog = WhatsNew(version, items, self.window)
+    def open_whats_new(self, version: str, notes: Notes) -> WhatsNew:
+        dialog = WhatsNew(version, notes, self.window)
         dialog.open()
         return dialog
 

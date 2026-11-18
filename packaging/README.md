@@ -28,6 +28,21 @@ CI tests and builds the tag, then the **Release** job publishes the installers t
 GitHub Release called `v1.1.0`. The job stops if the tag does not match
 `WeFlow.__version__`. Running it again for the same tag replaces the files.
 
+### Releasing without CI
+
+When Actions can't run, build on your own Mac and Windows PC and publish with
+`packaging/publish.sh` (see its header). Push the tag, then:
+
+1. Anywhere: `./packaging/publish.sh draft` makes draft releases in both repos. Drafts
+   are never offered as updates.
+2. On the Mac, at the tag: `./packaging/build_macos.sh`, then
+   `./packaging/publish.sh upload dist/*.dmg`.
+3. On Windows, at the tag: `pwsh packaging/build_windows.ps1`, then upload the `.exe` and
+   `.exe.sha256` to both repos with `gh release upload <tag> <files> --clobber`, once
+   plain and once with `--repo TheOrangeStuff/weflow-releases`.
+4. Anywhere: `./packaging/publish.sh go` checks both repos have all three files, then
+   publishes.
+
 ### The public releases repo
 
 This repo is private, so nobody without access can download from its releases, and an

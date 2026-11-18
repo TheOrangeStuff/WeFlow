@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from tests.fixtures.make_card import save_photo
+from WeFlow import __version__
 from WeFlow.core import secrets, uploaders
 from WeFlow.core.config import Store
 from WeFlow.core.uploaders import PendingAuth, UploadError
@@ -737,3 +738,15 @@ def test_settings_speed_slider_saves_and_applies(qtbot, window, bridge, store) -
     qtbot.waitUntil(lambda: bridge.pipeline.speed == "high", timeout=3000)
     qtbot.keyClick(dialog.speed.slider, Qt.Key.Key_Home)
     assert store.settings.speed == "low"
+
+
+def test_settings_whats_new_shows_every_version(qtbot, window, bridge) -> None:  # type: ignore[no-untyped-def]
+    dialog = SettingsDialog(bridge, window)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    dialog.notes_button.click()
+    qtbot.waitUntil(lambda: hasattr(dialog, "notes") and dialog.notes.isVisible(), timeout=3000)
+    versions = [v.text() for v in dialog.notes.versions]
+    assert versions[0] == __version__ and "1.0.0" in versions
+    assert dialog.notes_button.isEnabled()
+    dialog.notes.done_button.click()

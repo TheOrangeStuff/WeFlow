@@ -282,6 +282,36 @@ def test_whats_new_reads_the_bullets_of_one_version(tmp_path: Path) -> None:
     assert updates.whats_new("1.1.0", tmp_path / "missing.md") == []
 
 
+def test_whats_new_since_lists_every_skipped_version(tmp_path: Path) -> None:
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text("# Changelog\n\n## 1.2.0\n\n- Two.\n\n" + CHANGES[12:], encoding="utf-8")
+    notes = updates.release_notes(changelog)
+    assert [v for v, _ in notes] == ["1.2.0", "1.1.0", "1.0.0"]  # "Unreleased" left out
+    since = updates.whats_new_since
+    assert [v for v, _ in since("1.0.0", "1.2.0", changelog)] == ["1.2.0", "1.1.0"]
+    assert since("1.1.0", "1.2.0", changelog) == [("1.2.0", ["Two."])]
+    assert [v for v, _ in since("1.0.0", "1.1.0", changelog)] == ["1.1.0"]  # never ahead
+    assert since("", "1.2.0", changelog) == [("1.2.0", ["Two."])]  # seen not recorded
+    assert since("1.2.0", "1.2.0", changelog) == []
+    assert since("1.0.0", "1.2.0", tmp_path / "missing.md") == []
+
+
+def test_whats_new_shows_headings_only_for_several_versions(qtbot) -> None:  # type: ignore[no-untyped-def]
+    from WeFlow.ui.whats_new import WhatsNew
+
+    one = WhatsNew("1.2.0", [("1.2.0", ["Two."])])
+    several = WhatsNew("1.2.0", [("1.2.0", ["Two."]), ("1.1.0", ["One.", "More."])])
+    qtbot.addWidget(one)
+    qtbot.addWidget(several)
+    assert one.versions == [] and [i.text() for i in one.items] == ["Two."]
+    assert [v.text() for v in several.versions] == ["1.2.0", "1.1.0"]
+    assert [i.text() for i in several.items] == ["Two.", "One.", "More."]
+    several.show()
+    artifacts = ROOT / "tests" / "artifacts"
+    artifacts.mkdir(exist_ok=True)
+    assert several.grab().save(str(artifacts / "whats-new-several-light.png"))
+
+
 def test_whats_new_exists_for_the_version_being_built() -> None:
     """Bumping the version without writing its changelog section fails here and in CI."""
     from WeFlow import __version__
@@ -302,7 +332,7 @@ def app(qtbot, qapp, bridge, event, monkeypatch):  # type: ignore[no-untyped-def
     made.start()
     made.shown = []
     real = made.open_whats_new
-    monkeypatch.setattr(made, "open_whats_new", lambda v, items: made.shown.append(real(v, items)))
+    monkeypatch.setattr(made, "open_whats_new", lambda v, notes: made.shown.append(real(v, notes)))
     yield made
     made.tray.hide()
 
@@ -311,7 +341,7 @@ def test_whats_new_shows_once_after_an_update(qtbot, app, bridge, store, monkeyp
     from WeFlow import __version__
 
     notes = ["WeFlow tells you when a newer version is out.", "Press Skip to hide a version."]
-    monkeypatch.setattr(updates, "whats_new", lambda version: notes)
+    monkeypatch.setattr(updates, "whats_new_since", lambda seen, now: [(now, notes)])
     assert store.settings.first_run_done and store.settings.seen_version == ""  # as 1.0.0 left it
 
     app.show_whats_new()
@@ -336,13 +366,13 @@ def test_whats_new_shows_once_after_an_update(qtbot, app, bridge, store, monkeyp
 def test_whats_new_stays_quiet(qtbot, app, bridge, store, monkeypatch, case: str) -> None:  # type: ignore[no-untyped-def]
     from WeFlow import __version__
 
-    monkeypatch.setattr(updates, "whats_new", lambda version: ["Something changed."])
+    monkeypatch.setattr(updates, "whats_new_since", lambda seen, now: [(now, ["Changed."])])
     if case == "new install":
         bridge.finish_first_run()
     elif case == "older build installed":
         bridge.update_settings(seen_version="99.0.0")
     else:
-        monkeypatch.setattr(updates, "whats_new", lambda version: [])
+        monkeypatch.setattr(updates, "whats_new_since", lambda seen, now: [])
     app.show_whats_new()
     qtbot.wait(100)
     assert app.shown == []

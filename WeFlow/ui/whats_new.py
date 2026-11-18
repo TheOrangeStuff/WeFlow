@@ -1,10 +1,22 @@
-""" "What's new": shown once, the first time a newer version starts."""
+""" "What's new": shown once, the first time a newer version starts.
+
+It lists every version since the one last seen, so skipping updates loses nothing.
+Settings › What's new opens it with every version.
+"""
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
 
+from .bridge import Notes
 from .widgets.common import Button, label
 
 WIDTH = 480
@@ -13,23 +25,32 @@ MAX_LIST_HEIGHT = 320
 
 
 class WhatsNew(QDialog):
-    def __init__(self, version: str, items: list[str], parent: QWidget | None = None) -> None:
+    def __init__(self, version: str, notes: Notes, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("What's new")
         self.setWindowModality(Qt.WindowModality.WindowModal)
         self.setFixedWidth(WIDTH)
         self.heading = label(f"What's new in WeFlow {version}", "title")
-        self.items = [label(text, "body", wrap=True) for text in items]
+        self.items: list[QLabel] = []
+        self.versions: list[QLabel] = []
 
         rows = QVBoxLayout()
         rows.setContentsMargins(0, 0, 0, 0)
         rows.setSpacing(8)
-        for item in self.items:
-            row = QHBoxLayout()
-            row.setSpacing(8)
-            row.addWidget(label("•", "secondary"), 0, Qt.AlignmentFlag.AlignTop)
-            row.addWidget(item, 1)
-            rows.addLayout(row)
+        for index, (number, items) in enumerate(notes):
+            if len(notes) > 1:  # one version needs no heading of its own
+                if index:
+                    rows.addSpacing(8)
+                self.versions.append(label(number, "heading"))
+                rows.addWidget(self.versions[-1])
+            for text in items:
+                item = label(text, "body", wrap=True)
+                self.items.append(item)
+                row = QHBoxLayout()
+                row.setSpacing(8)
+                row.addWidget(label("•", "secondary"), 0, Qt.AlignmentFlag.AlignTop)
+                row.addWidget(item, 1)
+                rows.addLayout(row)
         rows.addStretch(1)
         content = QWidget()
         content.setLayout(rows)

@@ -18,7 +18,8 @@ from PySide6.QtWidgets import (
 
 from WeFlow import __version__
 
-from .bridge import SERVICES, Bridge, PendingAuth, service_name
+from .bridge import SERVICES, Bridge, Notes, PendingAuth, service_name
+from .whats_new import WhatsNew
 from .widgets import busy as busy_cover
 from .widgets.chip import Chip
 from .widgets.common import Button, Toggle, label, separator
@@ -263,6 +264,8 @@ class SettingsDialog(QDialog):
         self.check_now = Button("Check for updates", "text")
         self.check_now.clicked.connect(self._check_now)
         self.update_link = Button("", "link")
+        self.notes_button = Button("What's new", "text")
+        self.notes_button.clicked.connect(self._show_notes)
         self.update_link.clicked.connect(bridge.get_update)
         self.copy_log = Button("Copy log", icon="copy")
         self.copy_log.setToolTip(
@@ -313,6 +316,7 @@ class SettingsDialog(QDialog):
         footer = QHBoxLayout()
         footer.setSpacing(8)
         footer.addWidget(label(f"WeFlow {__version__}", "label"))
+        footer.addWidget(self.notes_button)
         footer.addWidget(self.check_now)
         footer.addWidget(self.update_link)
         footer.addStretch(1)
@@ -321,6 +325,15 @@ class SettingsDialog(QDialog):
         bridge.update_changed.connect(self._show_update)
         self._show_update()
         bridge.refresh_services()
+
+    def _show_notes(self) -> None:
+        self.notes_button.setEnabled(False)
+        self.bridge.release_notes(self._open_notes)
+
+    def _open_notes(self, notes: Notes) -> None:
+        self.notes_button.setEnabled(True)
+        self.notes = WhatsNew(__version__, notes, self)
+        self.notes.open()
 
     def _copy_log(self) -> None:
         self.copy_log.setEnabled(False)

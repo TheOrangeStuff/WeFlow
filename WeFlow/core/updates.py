@@ -105,26 +105,32 @@ def _plain(text: str) -> str:
     return re.sub(r"\*\*|__|`", "", text).strip()
 
 
-def whats_new(version: str, changelog: Path | None = None) -> list[str]:
-    """The bullet points under ``## <version>`` in the changelog, as plain text.
+Notes = list[tuple[str, list[str]]]  # (version, plain-text bullets), newest first
 
-    Empty when the file or the section is missing. Text that is not a bullet
-    (headings, paragraphs) is left out.
+
+def release_notes(changelog: Path | None = None) -> Notes:
+    """Every ``## <version>`` section of the changelog that has bullets, newest first.
+
+    Empty when the file is missing. Text that is not a bullet (headings, paragraphs)
+    is left out.
     """
-    wanted = parse_version(version)
     try:
         lines = (changelog or CHANGELOG).read_text(encoding="utf-8").splitlines()
     except OSError:
         return []
-    items: list[str] = []
-    inside = in_bullet = False
+    sections: list[tuple[str, list[str]]] = []
+    items: list[str] | None = None
+    in_bullet = False
     for line in lines:
         if line.startswith("## "):
             heading = _HEADING.match(line)
-            inside = bool(wanted and heading and parse_version(heading.group(1)) == wanted)
+            items = None
+            if heading:
+                items = []
+                sections.append((heading.group(1), items))
             in_bullet = False
             continue
-        if not inside:
+        if items is None:
             continue
         bullet = _BULLET.fullmatch(line)
         if bullet:
@@ -134,4 +140,34 @@ def whats_new(version: str, changelog: Path | None = None) -> list[str]:
             items[-1] += " " + line.strip()  # a wrapped line of the same bullet
         else:
             in_bullet = False
-    return [text for text in map(_plain, items) if text]
+    notes = [(v, [t for t in map(_plain, b) if t]) for v, b in sections]
+    notes = [(v, b) for v, b in notes if b]
+    return sorted(notes, key=lambda n: parse_version(n[0]) or (), reverse=True)
+
+
+def whats_new(version: str, changelog: Path | None = None) -> list[str]:
+    """The bullet points under ``## <version>`` in the changelog, as plain text."""
+    wanted = parse_version(version)
+    for found, items in release_notes(changelog):
+        if wanted and parse_version(found) == wanted:
+            return items
+    return []
+
+
+def whats_new_since(seen: str, current: str, changelog: Path | None = None) -> Notes:
+    """Notes for every version after ``seen``, up to and including ``current``.
+
+    Someone who skipped versions sees all they missed, newest first. With no ``seen``
+    (an install from before 1.1.0 kept track), only ``current`` is shown.
+    """
+    top = parse_version(current)
+    floor = parse_version(seen) if seen else top
+    if not top or not floor:
+        return []
+    return [
+        (v, items)
+        for v, items in release_notes(changelog)
+        if (parsed := parse_version(v))
+        and parsed <= top
+        and (parsed > floor or (not seen and parsed == top))
+    ]
