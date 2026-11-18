@@ -31,7 +31,7 @@ and Flickr accounts with an empty test gallery / album name; a watermark PNG.
 
 ## 3. Real card: copy and "Safe to remove"
 - [ ] Insert the card. Within 3 s: sound, notification, and "Card <label> → <event>".
-- [ ] After 5 s copying starts by itself. (Repeat once and press **Cancel**: nothing is copied.)
+- [ ] After 15 s copying starts by itself. (Repeat once and press **Cancel**: nothing is copied.)
 - [ ] Panel is amber, "Copying — keep card in", with a count and progress bar.
 - [ ] Panel turns green, "**Safe to remove**", only after the count is complete.
       Readable from 2 m, along with the event name.

@@ -1,7 +1,8 @@
 """The engine: copy → verify → process → upload, with saved state and retries.
 
 Threads: one copier, processing and upload workers (the speed level sets how many
-run at once) and a flusher that recounts changed batches and emits ``BatchUpdated``
+run at once; at MAX they start on each photo while the card is still copying) and a
+flusher that recounts changed batches and emits ``BatchUpdated``
 at most 10 times a second.
 """
 
@@ -242,6 +243,7 @@ class Pipeline:
         self._upload_meters: dict[int, RateMeter] = {}
         self._last_id = 0
         self._paced = False
+        self._copying = False
         self._stopping = threading.Event()
         self._budget = PixelBudget()
         self._copy_q: queue.Queue[int | None] = queue.Queue()
@@ -302,13 +304,19 @@ class Pipeline:
         """Low, medium or high. Applies as soon as the photos in hand finish."""
         if level not in SPEED_LEVELS:
             level = "medium"
-        process, upload, budget = speed_limits(level)
-        fixed_process, fixed_upload = self._fixed
         self._speed = level
+        process, upload = self._apply_limits()
+        log.info("speed %s: %d processing, %d uploading", level, process, upload)
+
+    def _apply_limits(self) -> tuple[int, int]:
+        process, upload, budget = speed_limits(self._speed)
+        if self._speed == "high" and self._copying:
+            process = max(1, process - 1)  # MAX works during the copy: leave the copier a core
+        fixed_process, fixed_upload = self._fixed
         self._process_slots.set_limit(fixed_process or process)
         self._upload_slots.set_limit(fixed_upload or upload)
         self._budget.set_limit(budget)
-        log.info("speed %s: %d processing, %d uploading", level, process, upload)
+        return process, upload
 
     def set_paced(self, paced: bool) -> int:
         """Paced mode waits for a go-ahead after copying and again before uploading.
@@ -578,10 +586,15 @@ class Pipeline:
             batch_id = self._copy_q.get()
             if batch_id is None:
                 return
+            self._copying = True
+            self._apply_limits()
             try:
                 self._copy_batch(batch_id)
             except Exception:
                 log.exception("copy worker failed")
+            finally:
+                self._copying = False
+                self._apply_limits()
 
     def _copy_batch(self, batch_id: int) -> None:
         with self._lock:
@@ -613,19 +626,22 @@ class Pipeline:
                 if copied is None:
                     batch.skipped += 1
                 else:
-                    state.put_photo(
-                        PhotoRecord(
-                            copied.name,
-                            copied.sha256,
-                            copied.captured,
-                            batch.id,
-                            original=copied.original,
-                            seq=state.next_seq(),
-                            held=self._paced,  # paced: wait for the go-ahead to process
-                        )
+                    photo = PhotoRecord(
+                        copied.name,
+                        copied.sha256,
+                        copied.captured,
+                        batch.id,
+                        original=copied.original,
+                        seq=state.next_seq(),
+                        held=self._paced,  # paced: wait for the go-ahead to process
                     )
+                    state.put_photo(photo)
                     names.append(copied.name)
                     batch.copied += 1
+                    if self._speed == "high" and not photo.held:
+                        # MAX (1.15.0): this photo is copied and verified, so start on it
+                        # now. The batch still isn't safe until every file is (FR-15).
+                        self._enqueue("process", batch.event_id, copied.name)
                 self._touch(batch.id)
             ingest.sync_dir(state.originals)
             state.sync()
@@ -649,10 +665,15 @@ class Pipeline:
                 self._emit(Notice("safe", f"{batch.label}: {safe_summary(batch)}", batch.id))
             else:
                 self._emit(Notice("info", f"{batch.label}: {copy_summary(batch)}", batch.id))
+        nudge = ""
         for name in names:
-            photo = state.photos.get(name)
-            if photo is not None and not photo.held:
+            waiting = state.photos.get(name)
+            if waiting is not None and waiting.status == "uploaded":
+                nudge = name
+            elif waiting is not None and not waiting.held:
                 self._enqueue("process", batch.event_id, name)
+        if nudge:  # MAX: photos went up during the copy, and albums aren't sorted until now
+            self._enqueue("upload", batch.event_id, nudge)
         self._touch(batch.id, now=True)
 
     # ------------------------------------------------------------ processing
@@ -752,6 +773,10 @@ class Pipeline:
         if found is None:
             return None
         event, state, photo, batch = found
+        if photo.status == "uploaded" and batch.destination != "none":
+            # The copier's nudge: everything may have gone up before the copy ended.
+            self._sort_when_settled(self._uploader(batch.destination), event, state, batch)
+            return None
         if photo.status != "processed" or photo.held:
             return None
         stage = "album" if photo.remote_id else "upload"
@@ -774,7 +799,9 @@ class Pipeline:
                 stage = "album"
                 with self._lock:
                     batch.upload_bytes += size
-                    batch.rate = meter.add(size)
+                    rate = meter.add(size)
+                    if batch.state != "copying":  # while copying, the rate shown is the copy's
+                        batch.rate = rate
             uploader.add_to_album(photo.remote_id, event)
         except Exception as caught:
             if isinstance(caught, UploadError):
@@ -814,6 +841,8 @@ class Pipeline:
     ) -> None:
         """Once nothing in the batch is left to upload, sort its album once (FR-31a).
         A failed sort never fails a photo: they are already up."""
+        if batch.state == "copying":
+            return  # MAX uploads during the copy; more photos are coming
         photos = state.batch_photos(batch.id)
         if any(p.status in ("copied", "processed") and not p.held for p in photos):
             return

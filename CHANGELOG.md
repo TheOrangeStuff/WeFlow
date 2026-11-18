@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.15.0 — 2026-11-18
+
+- At MAX speed, WeFlow now starts processing and uploading each photo as soon as it is
+  copied and checked, instead of waiting for the whole card. The first photos go online
+  within seconds.
+- "Safe to remove" works as before: it shows only when every photo is copied and checked.
+- When a card goes in, WeFlow now waits 15 seconds before it starts copying (was 5), so
+  there is more time to press Cancel.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.14.1 — 2026-11-18
 
 - MAX speed now uses every processor core, and more memory on computers that have it, so

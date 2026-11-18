@@ -42,7 +42,7 @@ from .widgets.speed_meter import SpeedControl
 MAX_ROWS = 2  # 1.14.0: the hero needs the room; the list scrolls after 2
 ROW_HEIGHT = 44
 DONE_FADE_MS = 10_000
-NOTICE_MS = 5_000
+NOTICE_MS = 15_000  # 1.15.0: was 5 s (the owner asked)
 PHOTO_EDGE = 1600  # longest side of the hero photo
 SIZE = (960, 720)
 MINIMUM = (760, 640)

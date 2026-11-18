@@ -143,7 +143,7 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
 - **FR-10** Detect a removable volume containing `DCIM/` within 3 s of it mounting.
   - macOS: poll `/Volumes`.
   - Windows: `GetLogicalDrives` + `DRIVE_REMOVABLE`, with `SetErrorMode` set to suppress "no disk" dialogs.
-- **FR-11** On detection, show a non-modal notice: "Card <label> → <event name>", with Cancel. Auto-start after 5 s.
+- **FR-11** On detection, show a non-modal notice: "Card <label> → <event name>", with Cancel. Auto-start after 15 s *(1.15.0; was 5 s)*.
   - If no event is active, show the event switcher instead and start once one is chosen.
 - **FR-12** Copy each JPEG (`.jpg` / `.jpeg`, any case; skip dotfiles and `._*`) to a temp file while hashing it with SHA-256, then `fsync`.
   - Re-hash the copy. On a mismatch, delete the temp file and mark the batch `error`.
@@ -174,6 +174,7 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
 - **FR-25** Writes are atomic: write to `.tmp-<name>`, then rename. Run `min(4, cpu_count // 2)` processing workers.
   - *(1.12.0)* That is the **Medium** speed (`Settings.speed`, default `medium`). **Low** runs `min(2, cpu_count // 4)` (at least 1) processing and 1 upload worker; **High** runs `cpu_count - 1` (at least 2) processing and 4 upload workers, with twice the pixel budget (NFR-08 applies to Medium). A change applies at once; photos already in hand finish first.
   - *(1.14.1)* **High** (shown as MAX) runs `cpu_count` (at least 2) processing workers. Its pixel budget is a third of the computer's memory at 9 bytes per pixel, and never less than twice Medium's.
+  - *(1.15.0)* At **High** each photo goes on to processing (and upload) as soon as it is copied and verified, while the rest of the card is still copying. One processing worker fewer runs during a copy, so the copier keeps a core. FR-15 is unchanged: the batch is `safe` only when every file is copied and verified, and the album is sorted (FR-31a) only after that. Low and Medium start processing after the copy, as before.
 - **FR-26** *(1.2.0)* Processed copies are named by the event's File naming rule, Lightroom-style: Import name (FR-13, the default), Custom name - Sequence, Custom name, Custom name - Filename *(1.10.0)*, Date - Filename, Filename, Filename - Sequence.
   - Sequence numbers have 4 digits, count from the start number, and follow import order within the event. "Filename" is the card's file name; "Date" is the capture date `YYYYMMDD`.
   - Names are made safe on both OSes. A taken name gets `-2`, `-3`…

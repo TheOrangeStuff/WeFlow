@@ -47,9 +47,9 @@ def test_m4_fake_card_inserted_safe_then_done(  # type: ignore[no-untyped-def]
     qtbot.waitUntil(lambda: window.notice_bar.isVisible(), timeout=3000)
     assert window.notice_bar.text.text() == "Card CARD_A → Test Event"
     assert window.notice_bar.cancel.isVisible() and window.notice_bar.cancel.text() == "Cancel"
-    assert window.notice_bar.countdown_ms == 5000
+    assert window.notice_bar.countdown_ms == 15000
     assert window.panel.state == "idle"  # not started yet
-    window.notice_bar.start_now()  # same path the 5 s timer takes
+    window.notice_bar.start_now()  # same path the 15 s timer takes
 
     qtbot.waitUntil(lambda: window.panel.state == "safe", timeout=10000)
     assert window.panel.headline.text() == "Safe to remove"

@@ -640,3 +640,81 @@ def test_speed_change_applies_live(make_pipeline) -> None:  # type: ignore[no-un
     pipeline.set_speed("nonsense")
     assert pipeline.speed == "medium"
     assert pipeline._upload_slots.limit == 2
+
+
+def hold_last_file(monkeypatch: pytest.MonkeyPatch) -> tuple[threading.Event, threading.Event]:
+    """Make the copier stop before the card's last file until ``release`` is set."""
+    reached, release = threading.Event(), threading.Event()
+    real = ingest.ingest_file
+
+    def gated(source: Path, *args: object, **kwargs: object) -> ingest.Copied | None:
+        if source.name == "IMG_0008.jpg":
+            reached.set()
+            assert release.wait(20)
+        return real(source, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ingest, "ingest_file", gated)
+    return reached, release
+
+
+def test_fr25_max_processes_and_uploads_during_the_copy(
+    store: Store,
+    card: Path,
+    recorder: Recorder,
+    make_pipeline: PipelineFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """1.15.0: at MAX a photo moves on as soon as it is copied and verified. The batch
+    still isn't safe, and its album isn't sorted, until the whole card is (FR-15)."""
+    reached, release = hold_last_file(monkeypatch)
+    event = flickr_event(store)
+    fake = FakeUploader()
+    pipeline = make_pipeline(fake)
+    pipeline.set_speed("high")
+    batch = pipeline.submit(card, event, "CARD_A", is_card=True)
+    assert reached.wait(20)
+    recorder.wait(lambda: len(fake.uploads) == NEW_PHOTOS)  # all up, mid-copy
+    time.sleep(0.3)  # let the flusher report
+    assert set(recorder.states(batch.id)) == {"copying"}
+    assert not recorder.batches(batch.id)[-1].verified
+    assert recorder.notices("safe") == [] and fake.sorts == []
+    release.set()
+    done = recorder.wait_state(batch.id, "done")
+    assert done.verified and len(recorder.notices("safe")) == 1  # said once the card is in
+    assert (done.copied, done.processed, done.uploaded) == (NEW_PHOTOS,) * 3
+    assert len(fake.uploads) == NEW_PHOTOS  # FR-32: nothing went up twice
+    recorder.wait(lambda: len(fake.sorts) == 1)  # sorted once, after the copy
+
+
+def test_fr25_default_speed_waits_for_the_copy(
+    store: Store,
+    card: Path,
+    recorder: Recorder,
+    make_pipeline: PipelineFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reached, release = hold_last_file(monkeypatch)
+    event = flickr_event(store)
+    fake = FakeUploader()
+    pipeline = make_pipeline(fake)
+    batch = pipeline.submit(card, event, "CARD_A", is_card=True)
+    assert reached.wait(20)
+    time.sleep(0.5)
+    waiting = pipeline._states[event.id].photos.values()
+    assert len(waiting) == NEW_PHOTOS and {p.status for p in waiting} == {"copied"}
+    assert fake.uploads == []
+    release.set()
+    recorder.wait_state(batch.id, "done")
+    assert len(fake.uploads) == NEW_PHOTOS
+
+
+def test_fr25_max_leaves_the_copier_a_core(make_pipeline: PipelineFactory) -> None:
+    pipeline = make_pipeline()
+    pipeline.set_speed("high")
+    full = pipeline._apply_limits()[0]
+    pipeline._copying = True
+    assert pipeline._apply_limits()[0] == max(1, full - 1)
+    pipeline.set_speed("medium")
+    busy = pipeline._apply_limits()[0]
+    pipeline._copying = False
+    assert pipeline._apply_limits()[0] == busy  # only MAX gives way

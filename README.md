@@ -48,7 +48,7 @@ event is active and whether the card can come out.
 
 Good to know:
 
-- When a card goes in, WeFlow shows "Card *name* → *event*" for 5 seconds. Press **Cancel**
+- When a card goes in, WeFlow shows "Card *name* → *event*" for 15 seconds. Press **Cancel**
   if it is the wrong card or the wrong event.
 - A card you insert twice is not copied twice. Photos already imported are skipped.
 - Bad Wi-Fi is fine. WeFlow keeps trying, and picks up where it left off after a restart.

@@ -59,7 +59,8 @@ owner and accepted on 2026-11-11.
 15. **Rows from earlier sessions are hidden once `done` or `error`.** The spec names only
     `done`; an old copy error has nothing left to act on.
 16. **Processing starts when the copy is verified**, not during it, so nothing competes
-    with the card for disk and CPU while the photographer is waiting.
+    with the card for disk and CPU while the photographer is waiting. *(1.15.0: MAX
+    speed starts during the copy; see that section.)*
 
 ## Engine
 
@@ -561,3 +562,27 @@ machine (2 cores / 4 threads) with 24 MP, 12 MB JPEGs; three things held it back
 - **Not changed, the owner's call:** processing still waits for the whole card to be
   copied and verified (decision 16), and WeFlow does not yet ask the system to stay
   awake or to keep it at full speed while its window is hidden.
+
+## 1.15.0 — MAX works during the copy; 15 s card countdown
+
+- **At MAX, a photo is processed and uploaded as soon as it is copied and verified**
+  (the owner agreed), instead of after the whole card (decision 16, which still holds for
+  LOW and DEFAULT). Each file is hashed, synced and re-hashed before it is renamed into
+  `originals/`, so a worker only ever reads a verified copy on the computer, never the
+  card. "Safe to remove" is unchanged: every file copied and verified (FR-15).
+- **The copier keeps a core.** During a copy MAX runs one processing worker fewer.
+  Measured on the dev machine (2 cores / 4 threads, 40 photos of 24 MP, instant fake
+  uploads): with a card read at 90 MB/s, safe to remove stayed at about 7.6 s, the first
+  upload started at 0.4 s instead of 7.9 s, and all was done in 8.1 s instead of 11.5 s.
+  With an unlimited-speed card, the worst case, the copy took 2.6 s instead of 2.3 s
+  (3.0 s without the spare core). Not measured with a real card reader.
+- **The album is sorted once, after the copy.** Uploads that finish while the card is
+  still copying skip the sort, because more photos are coming. If everything was already
+  up when the copy ended, the copier queues one already-uploaded photo again; the upload
+  worker sees it is up and only runs the sort. The copier itself never calls a service.
+- **While copying, the speed shown stays the copy's.** Upload speed takes over after.
+- **The screen is unchanged during the copy**: it shows "Copying — keep card in", and the
+  Process and Upload stages fill in when the card is safe. A batch that is fully uploaded
+  by then goes from `copying` to `done` without a `safe` update; the "safe to remove"
+  notice, the panel and auto-eject go by `verified`, so they behave the same.
+- **The card countdown is 15 s** (was 5 s; the owner asked). FR-11 updated.

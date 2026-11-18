@@ -1,6 +1,6 @@
 """A non-modal bar above the status panel.
 
-Used for the card notice ("Card X → Event", Cancel, auto-start after 5 s; FR-11),
+Used for the card notice ("Card X → Event", Cancel, auto-start after 15 s; FR-11),
 for short results such as an eject failure, and to offer a newer version. The
 update offer has the lowest priority: it waits behind the other two.
 """
@@ -25,7 +25,7 @@ class NoticeBar(QFrame):
     download_clicked = Signal()  # the update offer was accepted
     skipped = Signal()  # the update offer was turned down
 
-    def __init__(self, countdown_ms: int = 5000, message_ms: int = 6000) -> None:
+    def __init__(self, countdown_ms: int = 15000, message_ms: int = 6000) -> None:
         super().__init__()
         self.setObjectName("NoticeBar")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
