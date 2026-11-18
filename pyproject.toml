@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "WeFlow"
-version = "1.13.0"
+version = "1.13.1"
 description = "Card in, photos out: verified copy, auto look, watermark and upload for event photographers."
 requires-python = ">=3.11"
 dependencies = [

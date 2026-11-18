@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.13.0 — 2026-11-17
+## 1.13.1 — 2026-11-18
 
 - New Highlights slider in the event's Look settings. Move it left to tone down bright
   skies and white shirts, or right to brighten them.

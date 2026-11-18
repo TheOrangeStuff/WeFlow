@@ -394,7 +394,11 @@ separate updater framework.
 - Versions before 1.9.0 can only offer **Download**, so getting onto 1.9.0 is one last
   manual install.
 
-## 1.13.0 — Highlights slider (FR-21b), gentler white balance default
+## 1.13.1 — Highlights slider (FR-21b), gentler white balance default (1.13.0 never shipped)
+
+- **Released as 1.13.1.** The v1.13.0 tag was pushed while GitHub Actions could not run
+  (billing), then What's new (FR-45) was added. A new version avoids force-moving a pushed
+  tag. Nothing was ever built or published as 1.13.0.
 
 - **Highlights mirrors Shadows** (`v + k·v²·(1−v)`), so it fits the existing lookup table
   and costs nothing per photo. Negative pulls bright tones down, as in Lightroom.
