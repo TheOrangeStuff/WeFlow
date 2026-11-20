@@ -176,7 +176,7 @@ jobs:
           pattern: WeFlow-*
           path: dist
           merge-multiple: true
-      # Installed apps (1.19.0 and newer) check this repo's latest release for updates
+      # Installed apps (1.19.1 and newer) check this repo's latest release for updates
       # (WeFlow/core/updates.py).
       - name: Publish the installers
         env:
@@ -190,14 +190,22 @@ jobs:
               --title "WeFlow ${GITHUB_REF_NAME#v}" --notes-file notes.md
           fi
       # Apps on 1.18.0 or older still check the old releases repo, so the same release is
-      # copied there until nobody runs those versions.
+      # copied there until nobody runs those versions, under the file names those apps
+      # download (no -MACOS / -WINDOWS).
       - name: Copy the installers to the old releases repo
         env:
           GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
         run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir old
+          cp "dist/WeFlow-$version-MACOS-arm64.dmg" "old/WeFlow-$version-arm64.dmg"
+          cp "dist/WeFlow-Setup-$version-WINDOWS.exe" "old/WeFlow-Setup-$version.exe"
+          hash="$(cut -d' ' -f1 "dist/WeFlow-Setup-$version-WINDOWS.exe.sha256")"
+          printf '%s  %s' "$hash" "WeFlow-Setup-$version.exe" > "old/WeFlow-Setup-$version.exe.sha256"
+          (cd old && sha256sum -c "WeFlow-Setup-$version.exe.sha256")
           if gh release view "$GITHUB_REF_NAME" --repo "$OLD_RELEASES_REPO" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --repo "$OLD_RELEASES_REPO" --clobber
+            gh release upload "$GITHUB_REF_NAME" old/* --repo "$OLD_RELEASES_REPO" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/* --repo "$OLD_RELEASES_REPO" \
-              --title "WeFlow ${GITHUB_REF_NAME#v}" --notes-file notes.md
+            gh release create "$GITHUB_REF_NAME" old/* --repo "$OLD_RELEASES_REPO" \
+              --title "WeFlow $version" --notes-file notes.md
           fi

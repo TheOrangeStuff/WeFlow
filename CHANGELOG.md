@@ -1,9 +1,11 @@
 # Changelog
 
-## 1.19.0 — 2026-11-20
+## 1.19.1 — 2026-11-20
 
 - WeFlow's downloads and updates now come from its main page on GitHub,
   github.com/TheOrangeStuff/WeFlow. Nothing changes in how you update.
+- Download files now say which computer they are for: `-MACOS` for Mac and `-WINDOWS`
+  for Windows.
 - Also in this version: everything from 1.18.0, including uploads to Dropbox.
 - Your events, settings and sign-ins carry over unchanged.
 

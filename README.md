@@ -13,9 +13,9 @@ After that, inserting a card asks nothing.
 
 ## Install
 
-- **Mac with Apple silicon, macOS 13 or later:** open `WeFlow-<version>-arm64.dmg` and drag
+- **Mac with Apple silicon, macOS 13 or later:** open `WeFlow-<version>-MACOS-arm64.dmg` and drag
   WeFlow to Applications. Intel Macs are not supported.
-- **Windows 10 or 11:** run `WeFlow-Setup-<version>.exe`.
+- **Windows 10 or 11:** run `WeFlow-Setup-<version>-WINDOWS.exe`.
 
 No Python or other software is needed.
 

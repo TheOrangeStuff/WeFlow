@@ -1,4 +1,4 @@
-# Build dist\WeFlow\ and dist\WeFlow-Setup-<version>.exe. Run from the repo root.
+# Build dist\WeFlow\ and dist\WeFlow-Setup-<version>-WINDOWS.exe. Run from the repo root.
 #
 # Needs Inno Setup 6 (ISCC.exe on PATH or in its default folder).
 # Optional code signing, read from the environment (NFR-07):
@@ -33,9 +33,10 @@ if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
 & $iscc "/DAppVersion=$version" packaging\installer.iss
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 
-Sign-File "dist\WeFlow-Setup-$version.exe"
+$installer = "WeFlow-Setup-$version-WINDOWS.exe"
+Sign-File "dist\$installer"
 
 # In-app updates check the download against this (FR-44). Written after signing.
-$hash = (Get-FileHash "dist\WeFlow-Setup-$version.exe" -Algorithm SHA256).Hash.ToLower()
-Set-Content -Path "dist\WeFlow-Setup-$version.exe.sha256" -Value "$hash  WeFlow-Setup-$version.exe" -Encoding ascii -NoNewline
-Write-Host "Built dist\WeFlow-Setup-$version.exe"
+$hash = (Get-FileHash "dist\$installer" -Algorithm SHA256).Hash.ToLower()
+Set-Content -Path "dist\$installer.sha256" -Value "$hash  $installer" -Encoding ascii -NoNewline
+Write-Host "Built dist\$installer"

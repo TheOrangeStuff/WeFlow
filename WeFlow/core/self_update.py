@@ -39,7 +39,7 @@ def supported() -> bool:
 
 
 def installer_name(version: str) -> str:
-    return f"WeFlow-Setup-{version}.exe"
+    return f"WeFlow-Setup-{version}-WINDOWS.exe"
 
 
 def installer_url(version: str) -> str:

@@ -127,14 +127,20 @@ owner and accepted on 2026-11-11.
     to the public repo using the `RELEASES_REPO_TOKEN` secret, and fails early if the
     secret is missing. The private release (decision 34) is kept. Public release notes
     come from the matching `CHANGELOG.md` section. **(owner's choice)**
-    *(1.19.0: the source repo is now public, so releases live there and apps check it.
+    *(1.19.1: the source repo is now public, so releases live there and apps check it.
     See decision 35a.)*
-35a. **Releases move to the source repo (1.19.0).** `TheOrangeStuff/WeFlow` is public now,
-    so 1.19.0 and newer check its latest release for updates and download installers
+35a. **Releases move to the source repo (1.19.1).** `TheOrangeStuff/WeFlow` is public now,
+    so 1.19.1 and newer check its latest release for updates and download installers
     from it. Apps on 1.18.0 or older still check `weflow-releases`, so the Release job
     keeps copying each release there (`OLD_RELEASES_REPO`, `RELEASES_REPO_TOKEN`). Once
     nobody runs those versions, the copy can be dropped. The source repo's release notes
     now come from `CHANGELOG.md` instead of GitHub's generated list. **(owner's choice)**
+35b. **Installer names say the platform (1.19.1; 1.19.0 was tagged but never released):** `WeFlow-<ver>-MACOS-arm64.dmg` and
+    `WeFlow-Setup-<ver>-WINDOWS.exe` (+ `.sha256`). Update now (FR-44) downloads the new
+    name from 1.19.1 on. Apps on 1.18.0 or older download the old names from the old
+    releases repo, so the copy there keeps the old names (`WeFlow-<ver>-arm64.dmg`,
+    `WeFlow-Setup-<ver>.exe`). The source repo's releases from 1.19.1 on carry only the
+    new names, since only 1.19.1 and newer look there. **(owner's choice)**
 36. **Update notice (not in SPEC).** At start, and every 24 h while open, the app asks
     the public repo for its latest release (`core/updates.py`) with no credentials and
     sends nothing about the user. A newer version is offered in the notice bar with

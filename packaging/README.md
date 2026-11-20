@@ -6,8 +6,8 @@ attached to the run as artifacts. To build one by hand:
 ```bash
 pip install -e ".[build]"
 python packaging/make_icons.py          # only when the icon design changes
-./packaging/build_macos.sh              # macOS  -> dist/WeFlow-<version>-<arch>.dmg
-pwsh packaging/build_windows.ps1        # Windows -> dist\WeFlow-Setup-<version>.exe
+./packaging/build_macos.sh              # macOS  -> dist/WeFlow-<version>-MACOS-<arch>.dmg
+pwsh packaging/build_windows.ps1        # Windows -> dist\WeFlow-Setup-<version>-WINDOWS.exe
 ```
 
 The Windows build needs [Inno Setup 6](https://jrsoftware.org/isinfo.php).
@@ -34,19 +34,20 @@ When Actions can't run, build on your own Mac and Windows PC and publish with
 `packaging/publish.sh` (see its header). Push the tag, then:
 
 1. Anywhere: `./packaging/publish.sh draft` makes draft releases in this repo and the
-   old releases repo. Drafts
-   are never offered as updates.
+   old releases repo. Drafts are never offered as updates.
 2. On the Mac, at the tag: `./packaging/build_macos.sh`, then
    `./packaging/publish.sh upload dist/*.dmg`.
-3. On Windows, at the tag: `pwsh packaging/build_windows.ps1`, then upload the `.exe` and
-   `.exe.sha256` to both repos with `gh release upload <tag> <files> --clobber`, once
-   plain and once with `--repo TheOrangeStuff/weflow-releases`.
-4. Anywhere: `./packaging/publish.sh go` checks both repos have all three files, then
-   publishes.
+3. On Windows, at the tag: `pwsh packaging/build_windows.ps1`, then
+   `bash packaging/publish.sh upload dist/*.exe dist/*.exe.sha256` (Git Bash). Without
+   bash, upload both files with `gh release upload <tag> <files> --clobber`, then copy
+   them to `--repo TheOrangeStuff/weflow-releases` renamed without `-WINDOWS` (apps on
+   1.18.0 or older download those names), with the name inside the `.sha256` changed too.
+4. Anywhere: `./packaging/publish.sh go` checks both repos have all three files under
+   their names, then publishes.
 
 ### Where releases live
 
-Releases are published on this repo, which is public. Installed apps (1.19.0 and newer)
+Releases are published on this repo, which is public. Installed apps (1.19.1 and newer)
 ask it for its latest release to know when to offer an update (`WeFlow/core/updates.py`).
 
 - **Release notes** are the `## <version>` section of `CHANGELOG.md`, so write that

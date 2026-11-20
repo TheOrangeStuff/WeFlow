@@ -26,13 +26,14 @@ def serve(files: dict[str, bytes]) -> self_update.Chunks:
 
 def release(checksum: str, body: bytes = BODY) -> self_update.Chunks:
     url = self_update.installer_url("9.0.0")
-    return serve({url: body, url + ".sha256": f"{checksum}  WeFlow-Setup-9.0.0.exe".encode()})
+    sums = f"{checksum}  WeFlow-Setup-9.0.0-WINDOWS.exe".encode()
+    return serve({url: body, url + ".sha256": sums})
 
 
 def test_fr44_installer_comes_from_the_public_releases_repo() -> None:
     assert self_update.installer_url("9.0.0") == (
         f"https://github.com/{updates.RELEASES_REPO}/releases/download/v9.0.0/"
-        "WeFlow-Setup-9.0.0.exe"
+        "WeFlow-Setup-9.0.0-WINDOWS.exe"
     )
 
 
@@ -45,7 +46,7 @@ def test_fr44_download_checks_the_checksum(tmp_path: Path) -> None:
         "9.0.0", tmp_path, lambda d, t: seen.append((d, t)), release(GOOD_SUM)
     )
     assert path.read_bytes() == BODY
-    assert [p.name for p in tmp_path.iterdir()] == ["WeFlow-Setup-9.0.0.exe"]
+    assert [p.name for p in tmp_path.iterdir()] == ["WeFlow-Setup-9.0.0-WINDOWS.exe"]
     assert seen[-1] == (len(BODY), len(BODY))
 
 
