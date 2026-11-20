@@ -112,6 +112,8 @@ KEYCHAIN_NAMES_1_0 = {
     "flickr_token",
     "flickr_token_secret",
 }
+# Added in 1.18.0 (FR-46); frozen from then on.
+KEYCHAIN_NAMES_1_18 = {"dropbox_api_key", "dropbox_api_secret", "dropbox_token"}
 
 
 def test_update_keychain_names_are_frozen() -> None:
@@ -119,7 +121,7 @@ def test_update_keychain_names_are_frozen() -> None:
     assert secrets.SERVICE == "WeFlow"
     skip = {"SERVICE", "BUNDLE_ENTRY", "SPARE_ENTRY"}
     names = {v for k, v in vars(secrets).items() if k.isupper() and k[0] != "_" and k not in skip}
-    assert names == KEYCHAIN_NAMES_1_0
+    assert names == KEYCHAIN_NAMES_1_0 | KEYCHAIN_NAMES_1_18
 
 
 def test_update_keeps_the_user_signed_in(

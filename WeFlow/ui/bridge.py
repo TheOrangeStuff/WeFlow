@@ -85,10 +85,18 @@ __all__ = [
 ]
 
 log = logging.getLogger("WeFlow.ui")
-SERVICES = ("smugmug", "flickr")
+SERVICES = ("smugmug", "flickr", "dropbox")
 PREVIEW_EDGE = 900
-_BEGIN = {"smugmug": uploaders.smugmug_begin, "flickr": uploaders.flickr_begin}
-_FINISH = {"smugmug": uploaders.smugmug_finish, "flickr": uploaders.flickr_finish}
+_BEGIN = {
+    "smugmug": uploaders.smugmug_begin,
+    "flickr": uploaders.flickr_begin,
+    "dropbox": uploaders.dropbox_begin,
+}
+_FINISH = {
+    "smugmug": uploaders.smugmug_finish,
+    "flickr": uploaders.flickr_finish,
+    "dropbox": uploaders.dropbox_finish,
+}
 
 
 def _to_qimage(img: Any) -> QImage:

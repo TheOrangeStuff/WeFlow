@@ -1,3 +1,3 @@
 """WeFlow: card in, photos out."""
 
-__version__ = "1.17.0"
+__version__ = "1.18.0"

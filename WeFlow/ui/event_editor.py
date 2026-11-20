@@ -62,6 +62,7 @@ DESTINATION_LABELS = [
     ("none", "This computer only"),
     ("smugmug", "SmugMug"),
     ("flickr", "Flickr"),
+    ("dropbox", "Dropbox"),
 ]
 PRIVACY_LABELS = {
     "private": "Only me",

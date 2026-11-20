@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.18.0 — 2026-11-20
+
+- New: upload to **Dropbox**. Connect it in Settings with your own Dropbox app key,
+  then pick or create a folder in the event.
+- Photos go straight into the event's Dropbox folder. A different file with the same name
+  is never replaced.
+- Settings now scrolls the list of services when your screen is short.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.17.0 — 2026-11-19
 
 - At MAX speed, SmugMug uploads now find the fastest setting for your connection by

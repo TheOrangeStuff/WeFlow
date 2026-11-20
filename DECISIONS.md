@@ -617,3 +617,27 @@ machine (2 cores / 4 threads) with 24 MP, 12 MB JPEGs; three things held it back
   waits 0.25 s and tries again; that is not counted as an attempt.
 - **Windows short of photos are ignored**, so a slow processing stage never makes the
   tuner drop uploads. The count is not saved: each MAX session starts at 4 again.
+
+## 1.18.0 — Dropbox as a destination (FR-46)
+
+- **Beyond §11, at the owner's request.** "Destinations other than SmugMug and Flickr" was
+  out of scope for v1; Dropbox is now added as a third.
+- **Full Dropbox access, not an app folder** (the owner chose this), so photos can go into
+  any folder, including shared ones. Changing it later would sign everyone out.
+- **The user's own app key and secret, like SmugMug and Flickr.** Nothing ships in the app.
+  The code flow with the secret was chosen over PKCE so the Settings row stays the same
+  shape as the others; only the refresh token is stored.
+- **Folders are picked or created in the event** (the owner chose this). The list covers the
+  top level and one level down, A to Z rather than newest first: Dropbox folders have no
+  date, and listing the whole tree could mean millions of entries. Deeper folders are made
+  or reached by typing `Clients/Smith` in Create.
+- **No album step and no sort.** The upload lands in the folder, so `add_to_album` and
+  `sort_album` do nothing, as for SmugMug.
+- **Conflicts:** same `content_hash` is treated as already uploaded; a different file is
+  kept and the photo is renamed by Dropbox (`autorename`). A lost answer on that second,
+  renamed send could leave a duplicate; that is no worse than SmugMug, which has no check.
+- **At most 4 uploads at once**: Dropbox locks one account's writes, and more at once only
+  produces `too_many_write_operations`. Those are retried in place after a short wait so
+  they don't cost a 10 s FR-33 retry.
+- **Settings scrolls the service rows** when the screen is too short for all three
+  unconnected rows (about 860 px), and opens at full height when it isn't.

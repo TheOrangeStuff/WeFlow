@@ -1,4 +1,4 @@
-"""SmugMug and Flickr uploaders, their connect flows, and a fake for tests.
+"""SmugMug, Flickr and Dropbox uploaders, their connect flows, and a fake for tests.
 
 Uploading and adding to an album are separate calls (FR-32) so a photo that is
 already up is never sent again.
@@ -6,6 +6,8 @@ already up is never sent again.
 
 from __future__ import annotations
 
+import contextlib
+import json
 import logging
 import re
 import threading
@@ -27,7 +29,12 @@ SMUGMUG_ACCESS_TOKEN = f"{SMUGMUG_API}/services/oauth/1.0a/getAccessToken"
 TIMEOUT = (15, 300)
 API_TIMEOUT = (15, 45)  # connect, read: a long gallery page can take a while
 log = logging.getLogger("WeFlow.uploaders")  # paths, statuses and timings only: no secrets
-SERVICE_NAMES = {"smugmug": "SmugMug", "flickr": "Flickr", "none": "this computer"}
+SERVICE_NAMES = {
+    "smugmug": "SmugMug",
+    "flickr": "Flickr",
+    "dropbox": "Dropbox",
+    "none": "this computer",
+}
 
 
 class UploadError(Exception):
@@ -109,6 +116,7 @@ def _offline(service: str) -> UploadError:
 API_KEY_PAGES = {
     "smugmug": "https://api.smugmug.com/api/developer/apply",
     "flickr": "https://www.flickr.com/services/apps/create/apply",
+    "dropbox": "https://www.dropbox.com/developers/apps/create",
 }
 
 
@@ -731,6 +739,361 @@ class FlickrUploader:
             page += 1
 
 
+# ------------------------------------------------------------------- Dropbox
+DROPBOX_AUTHORIZE = "https://www.dropbox.com/oauth2/authorize"
+DROPBOX_TOKEN = "https://api.dropboxapi.com/oauth2/token"
+DROPBOX_API = "https://api.dropboxapi.com/2"
+DROPBOX_CONTENT = "https://content.dropboxapi.com/2"
+DROPBOX_TOKEN_MARGIN = 300.0  # seconds: refresh the access token this long before it ends
+DROPBOX_WRITE_TRIES = 4  # "too many writes at once": wait briefly and try again in place
+DROPBOX_PARALLEL = 8  # folders listed at the same time
+DROPBOX_HASH_BLOCK = 4 * 1024 * 1024
+
+
+def dropbox_folder(album: str) -> str:
+    """The event's folder field as a Dropbox path: ``/A/B``, or ``""`` when empty."""
+    parts = [p.strip() for p in album.replace("\\", "/").split("/")]
+    parts = [p for p in parts if p and p != "."]
+    return "/" + "/".join(parts) if parts else ""
+
+
+def dropbox_content_hash(path: Path) -> str:
+    """Dropbox's ``content_hash``: SHA-256 of the SHA-256 of each 4 MiB block."""
+    import hashlib
+
+    outer = hashlib.sha256()
+    with open(path, "rb") as fh:
+        while block := fh.read(DROPBOX_HASH_BLOCK):
+            outer.update(hashlib.sha256(block).digest())
+    return outer.hexdigest()
+
+
+def _dropbox_summary(response: Any) -> str:
+    try:
+        return str(response.json().get("error_summary") or "")
+    except (ValueError, AttributeError):
+        return ""
+
+
+def _dropbox_error(response: Any, what: str = "the upload") -> UploadError:
+    """Turn a failed Dropbox answer into a plain-language error (FR-33)."""
+    status, summary = response.status_code, _dropbox_summary(response)
+    if status == 401:
+        return _expired("Dropbox")
+    if status == 429 or status >= 500 or "too_many_write_operations" in summary:
+        return UploadError("Dropbox is busy. WeFlow will keep trying.", busy=True)
+    if "insufficient_space" in summary:
+        return UploadError("Your Dropbox is full. Free up space, then press Retry.", True)
+    if "no_write_permission" in summary or status == 403:
+        return UploadError(
+            "WeFlow can't write to that Dropbox folder. Choose another folder in the event.", True
+        )
+    if "malformed_path" in summary or "disallowed_name" in summary:
+        return UploadError("Dropbox can't use that folder name. Choose another in the event.", True)
+    return UploadError(f"Dropbox refused {what}. Check the folder in the event.", True)
+
+
+def dropbox_begin() -> PendingAuth:
+    """Step 1: the user approves WeFlow in the browser and copies a code (no redirect).
+
+    ``token_access_type=offline`` asks for a refresh token, so the sign-in lasts."""
+    from urllib.parse import urlencode
+
+    key, secret = api_credentials("dropbox")
+    if not key or not secret:
+        raise UploadError("Enter a Dropbox app key first.", permanent=True)
+    query = urlencode({"client_id": key, "response_type": "code", "token_access_type": "offline"})
+    return PendingAuth(f"{DROPBOX_AUTHORIZE}?{query}", "", "")
+
+
+def dropbox_finish(pending: PendingAuth, code: str) -> None:
+    """Step 2: trade the code for a refresh token and store it."""
+    import requests
+
+    key, secret = api_credentials("dropbox")
+    started = time.monotonic()
+    try:
+        response = requests.post(
+            DROPBOX_TOKEN,
+            data={"code": code.strip(), "grant_type": "authorization_code"},
+            auth=(key, secret),
+            timeout=API_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        log.warning("Dropbox POST /oauth2/token failed: %s", type(exc).__name__)
+        raise _offline("Dropbox") from exc
+    log.info(
+        "Dropbox POST /oauth2/token -> %s in %.1fs",
+        response.status_code,
+        time.monotonic() - started,
+    )
+    body: dict[str, Any] = {}
+    with contextlib.suppress(ValueError):
+        body = dict(response.json())
+    if response.status_code == 401 or body.get("error") == "invalid_client":
+        raise UploadError(
+            "Dropbox did not accept the app key. Check the key and secret.", permanent=True
+        )
+    refresh = str(body.get("refresh_token") or "")
+    if response.status_code != 200 or not refresh:
+        raise UploadError(
+            "Dropbox did not accept that code. Press Connect and try again.", permanent=True
+        )
+    secrets.set_secret(secrets.DROPBOX_TOKEN, refresh)
+
+
+class DropboxUploader:
+    """Uploads straight into the event's folder; the folder path is the "album".
+
+    Only the refresh token is stored. The short-lived access token stays in memory.
+    """
+
+    _tokens: dict[str, tuple[str, float]] = {}  # refresh token -> (access token, ends at)
+    _token_lock = threading.Lock()
+
+    def __init__(self) -> None:
+        self._local = threading.local()
+
+    @staticmethod
+    def _credentials() -> tuple[str, str, str]:
+        try:
+            key, secret = api_credentials("dropbox")
+            refresh = secrets.get_secret(secrets.DROPBOX_TOKEN)
+        except secrets.SecretsError as exc:
+            raise _keychain_locked() from exc
+        if not (key and secret and refresh):
+            raise _not_connected("Dropbox")
+        return key, secret, refresh
+
+    def _session(self) -> Any:
+        import requests
+
+        session = getattr(self._local, "session", None)
+        if session is None:
+            session = self._local.session = requests.Session()
+        return session
+
+    def _access_token(self, renew: bool = False) -> str:
+        import requests
+
+        key, secret, refresh = self._credentials()
+        with self._token_lock:
+            cached = self._tokens.get(refresh)
+            if cached and not renew and cached[1] > time.monotonic():
+                return cached[0]
+            started = time.monotonic()
+            try:
+                response = self._session().post(
+                    DROPBOX_TOKEN,
+                    data={"grant_type": "refresh_token", "refresh_token": refresh},
+                    auth=(key, secret),
+                    timeout=API_TIMEOUT,
+                )
+            except requests.RequestException as exc:
+                log.warning("Dropbox token refresh failed: %s", type(exc).__name__)
+                raise _offline("Dropbox") from exc
+            log.info(
+                "Dropbox POST /oauth2/token -> %s in %.1fs",
+                response.status_code,
+                time.monotonic() - started,
+            )
+            if response.status_code in (400, 401):  # revoked, or the app key changed
+                raise _expired("Dropbox")
+            if response.status_code != 200:
+                raise _dropbox_error(response)
+            try:
+                body = response.json()
+                token = str(body["access_token"])
+                lasts = float(body.get("expires_in") or 14400)
+            except (KeyError, TypeError, ValueError) as exc:
+                raise UploadError(
+                    "Dropbox gave an unexpected answer. WeFlow will keep trying."
+                ) from exc
+            ends = time.monotonic() + max(60.0, lasts - DROPBOX_TOKEN_MARGIN)
+            self._tokens[refresh] = (token, ends)
+            return token
+
+    def _post(self, url: str, **kwargs: Any) -> Any:
+        """One signed POST, logged by path, status and time only. A stale access
+        token is renewed once. ``requests`` errors are left to the caller."""
+        import requests
+
+        where = urlparse(url).path
+        headers = dict(kwargs.pop("headers", {}) or {})
+        for renew in (False, True):
+            headers["Authorization"] = f"Bearer {self._access_token(renew)}"
+            started = time.monotonic()
+            try:
+                response = self._session().post(url, headers=headers, **kwargs)
+            except requests.RequestException as exc:
+                log.warning(
+                    "Dropbox POST %s failed after %.1fs: %s",
+                    where,
+                    time.monotonic() - started,
+                    type(exc).__name__,
+                )
+                raise
+            log.info(
+                "Dropbox POST %s -> %s in %.1fs",
+                where,
+                response.status_code,
+                time.monotonic() - started,
+            )
+            if response.status_code != 401 or renew:
+                return response
+        raise AssertionError("unreachable")
+
+    def _api(self, endpoint: str, body: dict[str, Any], failed: str) -> Any:
+        import requests
+
+        try:
+            return self._post(f"{DROPBOX_API}/{endpoint}", json=body, timeout=API_TIMEOUT)
+        except requests.RequestException as exc:
+            raise UploadError(failed) from exc
+
+    def _send(self, path: Path, target: str, autorename: bool) -> Any:
+        """POST the file, waiting briefly when Dropbox has too many writes at once."""
+        import requests
+
+        arg = {"path": target, "mode": "add", "autorename": autorename, "mute": True}
+        headers = {
+            # ASCII-only JSON, as Dropbox requires in a header
+            "Dropbox-API-Arg": json.dumps(arg),
+            "Content-Type": "application/octet-stream",
+        }
+        for attempt in range(1, DROPBOX_WRITE_TRIES + 1):
+            try:
+                with open(path, "rb") as fh:
+                    response = self._post(
+                        f"{DROPBOX_CONTENT}/files/upload", data=fh, headers=headers, timeout=TIMEOUT
+                    )
+            except requests.RequestException as exc:
+                raise _offline("Dropbox") from exc
+            except OSError as exc:
+                raise UploadError("The processed photo is missing. Press Retry.", True) from exc
+            contended = response.status_code == 429 or (
+                "too_many_write_operations" in _dropbox_summary(response)
+            )
+            if not contended or attempt == DROPBOX_WRITE_TRIES:
+                return response
+            try:
+                wait = float(response.headers.get("Retry-After") or attempt)
+            except ValueError:
+                wait = float(attempt)
+            time.sleep(min(wait, 10.0))
+        raise AssertionError("unreachable")
+
+    def _same_file(self, path: Path, target: str) -> str:
+        """The id of the Dropbox file at ``target`` when it holds exactly this photo."""
+        response = self._api(
+            "files/get_metadata", {"path": target}, "Can't reach Dropbox. WeFlow will keep trying."
+        )
+        if response.status_code != 200:
+            return ""
+        try:
+            body = response.json()
+        except ValueError:
+            return ""
+        if body.get(".tag") != "file" or body.get("content_hash") != dropbox_content_hash(path):
+            return ""
+        return str(body.get("id") or "")
+
+    def upload(self, path: Path, event: Profile) -> str:
+        folder = dropbox_folder(event.album)
+        if not folder:
+            raise UploadError("This event has no Dropbox folder. Add one in the event.", True)
+        target = f"{folder}/{path.name}"
+        response = self._send(path, target, autorename=False)
+        if response.status_code == 409 and "/conflict" in _dropbox_summary(response):
+            # A file with this name is there. If it is this very photo (an answer lost on
+            # the way back), it is already up: never send it twice (FR-32). Otherwise keep
+            # the user's file and let Dropbox add " (1)" to this one's name.
+            existing = self._same_file(path, target)
+            if existing:
+                return existing
+            response = self._send(path, target, autorename=True)
+        if response.status_code != 200:
+            raise _dropbox_error(response)
+        try:
+            return str(response.json()["id"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise UploadError(
+                "Dropbox gave an unexpected answer. WeFlow will keep trying."
+            ) from exc
+
+    def add_to_album(self, remote_id: str, event: Profile) -> None:
+        """Dropbox uploads go straight into the folder; nothing more to do."""
+
+    def _folders(self, path: str) -> list[str]:
+        """The folders directly inside ``path`` ("" is the top of the Dropbox)."""
+        failed = "Dropbox did not send the folder list. Try again."
+        found: list[str] = []
+        response = self._api("files/list_folder", {"path": path, "limit": 2000}, failed)
+        while True:
+            if response.status_code == 401:
+                raise _expired("Dropbox")
+            if response.status_code != 200:
+                raise UploadError(failed)
+            try:
+                body = response.json()
+            except ValueError as exc:
+                raise UploadError(failed) from exc
+            for entry in body.get("entries") or []:
+                if entry.get(".tag") == "folder" and entry.get("path_display"):
+                    found.append(str(entry["path_display"]))
+            if not body.get("has_more") or len(found) >= MAX_ALBUMS:
+                return found
+            response = self._api("files/list_folder/continue", {"cursor": body["cursor"]}, failed)
+
+    def list_albums(self) -> list[AlbumChoice]:
+        """Folders at the top of the Dropbox and one level down, A to Z. Dropbox
+        folders have no date, so the list can't be newest first (FR-39)."""
+        started = time.monotonic()
+        top = self._folders("")
+        found = list(top)
+
+        def inside(path: str) -> list[str]:
+            try:
+                return self._folders(path)
+            except UploadError as exc:
+                if "expired" in exc.message:
+                    raise
+                return []  # gone or unreadable meanwhile: list the rest
+
+        with ThreadPoolExecutor(max_workers=DROPBOX_PARALLEL) as pool:
+            for children in pool.map(inside, top):
+                found.extend(children)
+        found.sort(key=str.casefold)
+        log.info("Dropbox listed %d folders in %.1fs", len(found), time.monotonic() - started)
+        return [AlbumChoice(p, p.lstrip("/")) for p in found[:MAX_ALBUMS]]
+
+    def create_album(self, name: str) -> AlbumChoice:
+        """A new folder (FR-41). ``Clients/Smith`` makes both levels. A folder that
+        is already there is simply chosen."""
+        folder = dropbox_folder(name)
+        if not folder:
+            raise UploadError("Enter a name for the new folder.", True)
+        failed = "Dropbox did not make the folder. Try again."
+        response = self._api(
+            "files/create_folder_v2", {"path": folder, "autorename": False}, failed
+        )
+        summary = _dropbox_summary(response)
+        if response.status_code == 409 and "conflict/folder" in summary:
+            return AlbumChoice(folder, folder.lstrip("/"))
+        if response.status_code == 409 and "conflict" in summary:
+            raise UploadError("A file in Dropbox already has that name. Choose another name.", True)
+        if response.status_code != 200:
+            raise _dropbox_error(response, "the new folder")
+        try:
+            made = str(response.json()["metadata"]["path_display"])
+        except (KeyError, TypeError, ValueError):
+            made = folder
+        return AlbumChoice(made, made.lstrip("/"))
+
+    def sort_album(self, event: Profile) -> None:
+        """Dropbox shows a folder in name order; there is nothing to sort."""
+
+
 # ---------------------------------------------------------------------- fake
 class FakeUploader:
     """Stands in for a real service in tests. Never touches the network.
@@ -800,4 +1163,6 @@ def make_uploader(destination: str) -> Uploader:
         return SmugMugUploader()
     if destination == "flickr":
         return FlickrUploader()
+    if destination == "dropbox":
+        return DropboxUploader()
     raise UploadError("This event has nowhere to upload to. Choose a destination.", True)
