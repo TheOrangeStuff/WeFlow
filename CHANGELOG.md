@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.19.2 — 2026-11-20
+
+- Dropbox uploads are removed. Events that used Dropbox now keep their photos on this
+  computer; choose SmugMug or Flickr in the event to upload again. Your Dropbox sign-in
+  is no longer used.
+- The Mac download is now named `-MAC` instead of `-MACOS`.
+- Your other events, settings and sign-ins carry over unchanged.
+
 ## 1.19.1 — 2026-11-20
 
 - WeFlow's downloads and updates now come from its main page on GitHub,

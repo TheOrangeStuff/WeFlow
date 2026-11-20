@@ -137,7 +137,7 @@ owner and accepted on 2026-11-11.
     dropped and `weflow-releases` archived, not deleted: its last release, 1.19.1, moves
     old apps onto this repo. `RELEASES_REPO_TOKEN` is no longer used.)* The source repo's release notes
     now come from `CHANGELOG.md` instead of GitHub's generated list. **(owner's choice)**
-35b. **Installer names say the platform (1.19.1; 1.19.0 was tagged but never released):** `WeFlow-<ver>-MACOS-arm64.dmg` and
+35b. **Installer names say the platform (1.19.1; 1.19.0 was tagged but never released):** `WeFlow-<ver>-MACOS-arm64.dmg` *(`-MAC-` from 1.19.2, owner's choice)* and
     `WeFlow-Setup-<ver>-WINDOWS.exe` (+ `.sha256`). Update now (FR-44) downloads the new
     name from 1.19.1 on. Apps on 1.18.0 or older download the old names from the old
     releases repo, so the copy there keeps the old names (`WeFlow-<ver>-arm64.dmg`,
@@ -657,3 +657,13 @@ machine (2 cores / 4 threads) with 24 MP, 12 MB JPEGs; three things held it back
   they don't cost a 10 s FR-33 retry.
 - **Settings scrolls the service rows** when the screen is too short for all three
   unconnected rows (about 860 px), and opens at full height when it isn't.
+
+## 1.19.2 — Dropbox removed
+
+- **The owner asked to remove Dropbox** (FR-46, 1.18.0); SmugMug and Flickr are again the
+  only destinations. The Settings scroll from 1.18.0 stays.
+- **Events set to Dropbox load as "This computer only"** with no folder, so they still open
+  and process; the user picks another service to upload. Batches already queued for
+  Dropbox fail at once with a plain message; their photos stay on disk.
+- **The stored Dropbox keys are left in the keychain entry, unused**, rather than rewriting
+  the entry (each rewrite can cost an unsigned macOS build a keychain prompt).

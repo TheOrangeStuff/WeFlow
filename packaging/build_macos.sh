@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build WeFlow.app and WeFlow-<version>-MACOS-<arch>.dmg. Run on macOS from the repo root.
+# Build WeFlow.app and WeFlow-<version>-MAC-<arch>.dmg. Run on macOS from the repo root.
 #
 # Optional signing and notarisation, all read from the environment (NFR-07):
 #   MACOS_SIGN_IDENTITY   e.g. "Developer ID Application: Your Name (TEAMID)"
@@ -14,7 +14,7 @@ if [[ "$ARCH" != "arm64" ]]; then
   echo "WeFlow is built for Apple silicon only; this Mac is $ARCH." >&2
   exit 1
 fi
-DMG="dist/WeFlow-${VERSION}-MACOS-${ARCH}.dmg"
+DMG="dist/WeFlow-${VERSION}-MAC-${ARCH}.dmg"
 
 rm -rf build dist
 pyinstaller --noconfirm packaging/WeFlow.spec

@@ -112,8 +112,6 @@ KEYCHAIN_NAMES_1_0 = {
     "flickr_token",
     "flickr_token_secret",
 }
-# Added in 1.18.0 (FR-46); frozen from then on.
-KEYCHAIN_NAMES_1_18 = {"dropbox_api_key", "dropbox_api_secret", "dropbox_token"}
 
 
 def test_update_keychain_names_are_frozen() -> None:
@@ -121,7 +119,7 @@ def test_update_keychain_names_are_frozen() -> None:
     assert secrets.SERVICE == "WeFlow"
     skip = {"SERVICE", "BUNDLE_ENTRY", "SPARE_ENTRY"}
     names = {v for k, v in vars(secrets).items() if k.isupper() and k[0] != "_" and k not in skip}
-    assert names == KEYCHAIN_NAMES_1_0 | KEYCHAIN_NAMES_1_18
+    assert names == KEYCHAIN_NAMES_1_0
 
 
 def test_update_keeps_the_user_signed_in(
@@ -274,3 +272,14 @@ def test_originals_folder_is_the_event_name_and_never_changes(store: Store) -> N
     assert originals_folder_name("Processed") == "Processed originals"
     assert originals_folder_name("CON") == "CON originals"
     assert Profile().originals_dir == "originals"  # events made before 1.16.0
+
+
+def test_update_dropbox_event_stays_on_this_computer(store: Store) -> None:
+    """1.19.2 removed Dropbox: an event set to it by 1.18.0 loads, saving locally."""
+    store.data_dir.mkdir(parents=True, exist_ok=True)
+    old = {"id": "abc", "name": "Old", "folder": "Old", "destination": "dropbox", "album": "/A"}
+    (store.data_dir / "events.json").write_text(json.dumps([old]))
+    store.load()
+    event = store.get("abc")
+    assert event is not None and (event.destination, event.album) == ("none", "")
+    assert not event.validate()

@@ -734,32 +734,3 @@ def test_settings_whats_new_shows_every_version(qtbot, window, bridge) -> None: 
     assert versions[0] == __version__ and "1.0.0" in versions
     assert dialog.notes_button.isEnabled()
     dialog.notes.done_button.click()
-
-
-def test_fr46_dropbox_row_and_folder_picker(
-    qtbot, window, bridge, store, event, fake_uploader
-) -> None:  # type: ignore[no-untyped-def]
-    dialog = SettingsDialog(bridge, window)
-    qtbot.addWidget(dialog)
-    dialog.show()
-    row = dialog.services["dropbox"]
-    assert (
-        row.get_key.text() == "Get a Dropbox app key…"
-        and row.api_key.placeholderText() == "App key"
-    )
-    assert row.key_help.isVisible() and "Full Dropbox" in row.key_help.text()
-    dialog.close()
-
-    fake_uploader.albums = [uploaders.AlbumChoice("/Clients/Smith", "Clients/Smith")]
-    event.destination, event.album = "dropbox", "/Clients/Smith"
-    bridge.save_event(event)
-    editor = EventEditor(bridge, bridge.active(), window)
-    qtbot.addWidget(editor)
-    editor.show()
-    picker = editor.album_picker
-    qtbot.waitUntil(lambda: editor.album.text() == "Clients/Smith", timeout=3000)
-    assert picker.caption.text() == "Folder" and picker.choose.text() == "Choose Folder…"
-    chooser = chooser_for(qtbot, picker)
-    assert chooser.list.item(0).text() == "Create a folder…"
-    assert not editor.privacy_field.isVisible() and not editor.large_row.isVisible()
-    chooser.reject()

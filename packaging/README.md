@@ -6,7 +6,7 @@ attached to the run as artifacts. To build one by hand:
 ```bash
 pip install -e ".[build]"
 python packaging/make_icons.py          # only when the icon design changes
-./packaging/build_macos.sh              # macOS  -> dist/WeFlow-<version>-MACOS-<arch>.dmg
+./packaging/build_macos.sh              # macOS  -> dist/WeFlow-<version>-MAC-<arch>.dmg
 pwsh packaging/build_windows.ps1        # Windows -> dist\WeFlow-Setup-<version>-WINDOWS.exe
 ```
 

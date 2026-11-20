@@ -23,7 +23,7 @@ from .widgets.common import Button, label, restyle
 STEPS = ("Where should photos be saved?", "Connect a service", "Create your first event")
 INTROS = (
     "WeFlow keeps one folder per event here, with originals and finished photos.",
-    "Connect SmugMug, Flickr or Dropbox to upload automatically. You can also do this in Settings.",
+    "Connect SmugMug or Flickr to upload automatically. You can also do this later in Settings.",
     "An event holds every choice, so inserting a card asks nothing. You can change it later.",
 )
 

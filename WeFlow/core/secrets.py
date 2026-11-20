@@ -20,9 +20,6 @@ FLICKR_API_KEY = "flickr_api_key"
 FLICKR_API_SECRET = "flickr_api_secret"
 FLICKR_TOKEN = "flickr_token"
 FLICKR_TOKEN_SECRET = "flickr_token_secret"
-DROPBOX_API_KEY = "dropbox_api_key"  # 1.18.0: the Dropbox app key and secret
-DROPBOX_API_SECRET = "dropbox_api_secret"
-DROPBOX_TOKEN = "dropbox_token"  # the long-lived refresh token, never the access token
 
 # Since 1.6.3 all of the above live together in this one entry, as JSON. Each entry
 # costs its own macOS keychain prompt, so one entry means one prompt, not eight.

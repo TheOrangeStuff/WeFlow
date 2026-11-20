@@ -18,7 +18,7 @@ from typing import Any
 from . import secrets
 
 APP_NAME = "WeFlow"
-DESTINATIONS = ("none", "smugmug", "flickr", "dropbox")
+DESTINATIONS = ("none", "smugmug", "flickr")
 FLICKR_PRIVACY = ("private", "friends", "family", "friends+family", "public")
 WATERMARK_POSITIONS = ("tl", "tr", "center", "bl", "br")
 # How processed copies are named (Lightroom-style). "import" keeps the import name (FR-13).
@@ -188,8 +188,6 @@ class Profile:
             errors["album"] = "Choose a SmugMug gallery."
         elif self.destination == "flickr" and not self.album.strip():
             errors["album"] = "Choose a Flickr album or create one."
-        elif self.destination == "dropbox" and not self.album.strip():
-            errors["album"] = "Choose a Dropbox folder or create one."
         if self.flickr_privacy not in FLICKR_PRIVACY:
             errors["flickr_privacy"] = "Choose who can see the photos."
         if self.watermark:
@@ -292,6 +290,10 @@ class Store:
                     if "id" not in item or not profile.folder:
                         fixed = True  # v0.1 event: give it an id and freeze its folder
                         profile.folder = profile.folder or slugify(profile.name)
+                    if profile.destination not in DESTINATIONS:
+                        # 1.19.2: Dropbox (1.18.0) was removed. Keep the event, on this computer.
+                        profile.destination, profile.album, profile.album_name = "none", "", ""
+                        fixed = True
                     self._events[profile.id] = profile
             if self.settings.active_event_id not in self._events:
                 self.settings.active_event_id = ""

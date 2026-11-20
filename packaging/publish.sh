@@ -14,7 +14,7 @@ set -euo pipefail
 VERSION="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' WeFlow/__init__.py)"
 TAG="v${VERSION}"
 SOURCE_REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
-ASSETS=("WeFlow-${VERSION}-MACOS-arm64.dmg" "WeFlow-Setup-${VERSION}-WINDOWS.exe" "WeFlow-Setup-${VERSION}-WINDOWS.exe.sha256")
+ASSETS=("WeFlow-${VERSION}-MAC-arm64.dmg" "WeFlow-Setup-${VERSION}-WINDOWS.exe" "WeFlow-Setup-${VERSION}-WINDOWS.exe.sha256")
 
 fail() { echo "error: $*" >&2; exit 1; }
 

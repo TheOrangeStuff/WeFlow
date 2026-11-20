@@ -24,17 +24,12 @@ from ..theme import theme
 from . import busy as busy_cover
 from .common import Button, label
 
-SERVICES = ("smugmug", "flickr", "dropbox")
+SERVICES = ("smugmug", "flickr")
 NO_ALBUMS = {
     "smugmug": "No galleries yet. Choose Create a gallery.",
     "flickr": "No albums yet. Choose Create an album.",
-    "dropbox": "No folders yet. Choose Create a folder.",
 }
 FLICKR_LATER = "Flickr makes the album when the first photo goes up."
-DROPBOX_NEW = (
-    "Photos will go to this new folder. Use / to put it inside another, like Clients/Smith."
-)
-NEW_HINTS = {"flickr": FLICKR_LATER, "dropbox": DROPBOX_NEW}
 CREATE = "create"  # item data of the "Create a gallery…" row
 LINK = "link"  # item data of the "Use this link" row
 ROLE = Qt.ItemDataRole.UserRole
@@ -43,8 +38,6 @@ ROLE = Qt.ItemDataRole.UserRole
 def album_word(destination: str, plural: bool = True) -> str:
     if destination == "smugmug":
         return "galleries" if plural else "gallery"
-    if destination == "dropbox":
-        return "folders" if plural else "folder"
     return "albums" if plural else "album"
 
 
@@ -86,7 +79,7 @@ class GalleryChooser(QDialog):
         self._token = 0
         self._new_token = 0
         word = album_word(destination, plural=False)
-        article = "an" if destination == "flickr" else "a"
+        article = "a" if destination == "smugmug" else "an"
         self.setWindowTitle(f"Choose {article} {word}")
         self.setWindowModality(Qt.WindowModality.WindowModal)
         self.resize(440, 520)
@@ -141,7 +134,7 @@ class GalleryChooser(QDialog):
         self.new_name.textChanged.connect(self._sync)
         self.new_name.returnPressed.connect(self.create_album)
         self.new_hint = label(
-            NEW_HINTS.get(destination, "Photos will go to this new gallery."),
+            FLICKR_LATER if destination == "flickr" else "Photos will go to this new gallery.",
             "secondary",
             wrap=True,
         )
@@ -487,11 +480,11 @@ class AlbumPicker(QWidget):
         self.error.setVisible(bool(message))
 
     def _relabel(self) -> None:
-        word = album_word(self._destination, plural=False).capitalize()
-        self.caption.setText(word)
+        smugmug = self._destination == "smugmug"
+        self.caption.setText("Gallery" if smugmug else "Album")
         self.album.setAccessibleName(self.caption.text())
         self.album.setPlaceholderText(f"No {album_word(self._destination, plural=False)} chosen")
-        self.choose.setText(f"Choose {word}…")
+        self.choose.setText("Choose Gallery…" if smugmug else "Choose Album…")
 
     def _show_hint(self, text: str) -> None:
         self.hint.setText(text)

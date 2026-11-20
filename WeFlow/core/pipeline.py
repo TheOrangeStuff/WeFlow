@@ -59,9 +59,8 @@ def default_process_workers() -> int:
 SPEED_LEVELS = ("low", "medium", "high")
 # 1.17.0: at MAX, UploadTuner raises SmugMug uploads at once from 4 up to this.
 MAX_UPLOADS = 12
-# Never more uploads at once to these services, at any speed (Flickr's API call limit;
-# 1.18.0: Dropbox refuses many writes at once to one account).
-DESTINATION_LIMITS = {"flickr": 4, "dropbox": 4}
+# Never more uploads at once to these services, at any speed (Flickr's API call limit).
+DESTINATION_LIMITS = {"flickr": 4}
 GATE_WAIT = 0.25  # seconds a photo waits when its service's limit is full
 TUNE_WINDOW = 15.0  # seconds of uploading per measurement
 TUNE_HOLD = 60.0  # seconds to stay at a count before trying one more

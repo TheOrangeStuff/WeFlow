@@ -1,4 +1,4 @@
-"""Settings: library, SmugMug / Flickr / Dropbox, sound, auto-eject, start at login (§7.4)."""
+"""Settings: library, SmugMug / Flickr, sound, auto-eject, start at login (§7.4)."""
 
 from __future__ import annotations
 
@@ -25,11 +25,6 @@ from .widgets import busy as busy_cover
 from .widgets.chip import Chip
 from .widgets.common import Button, Toggle, label, separator
 
-DROPBOX_KEY_HELP = (
-    'Make a "Full Dropbox" app and turn on files.content.write under Permissions. '
-    "Then paste its key and secret here."
-)
-
 
 class ServiceRow(QFrame):
     """One service: status, Connect / Reconnect, Disconnect, and the code step."""
@@ -46,21 +41,18 @@ class ServiceRow(QFrame):
         self.connect_button.clicked.connect(self._begin)
         self.disconnect = Button("Disconnect", "link")
         self.disconnect.clicked.connect(self._disconnect)
-        # Dropbox calls them the app key and app secret.
-        self.key_word = "app" if service == "dropbox" else "API"
-        self.key_word_title = "App" if service == "dropbox" else "API"
-        self.own_key = Button(f"Change {self.key_word} key…", "link")
+        self.own_key = Button("Change API key…", "link")
         self.own_key.clicked.connect(self._show_keys)
-        self.get_key = Button(f"Get a {self.title} {self.key_word} key…", "link")
+        self.get_key = Button(f"Get a {self.title} API key…", "link")
         self.get_key.clicked.connect(lambda: bridge.open_api_key_page(service))
 
         self.api_key = QLineEdit()
-        self.api_key.setPlaceholderText(f"{self.key_word_title} key")
-        self.api_key.setAccessibleName(f"{self.title} {self.key_word} key")
+        self.api_key.setPlaceholderText("API key")
+        self.api_key.setAccessibleName(f"{self.title} API key")
         self.api_secret = QLineEdit()
-        self.api_secret.setPlaceholderText(f"{self.key_word_title} secret")
+        self.api_secret.setPlaceholderText("API secret")
         self.api_secret.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_secret.setAccessibleName(f"{self.title} {self.key_word} secret")
+        self.api_secret.setAccessibleName(f"{self.title} API secret")
         self.keys_box = QWidget()
         keys = QHBoxLayout(self.keys_box)
         keys.setContentsMargins(0, 0, 0, 0)
@@ -68,11 +60,6 @@ class ServiceRow(QFrame):
         keys.addWidget(self.api_key)
         keys.addWidget(self.api_secret)
         self.keys_box.hide()
-        # Dropbox: the app must reach any folder and be allowed to add files.
-        self.key_help = label(
-            DROPBOX_KEY_HELP if service == "dropbox" else "", "secondary", wrap=True
-        )
-        self.key_help.hide()
 
         self.code = QLineEdit()
         self.code.setPlaceholderText("Code from your browser")
@@ -111,7 +98,6 @@ class ServiceRow(QFrame):
         column.setSpacing(8)
         column.addLayout(head)
         column.addWidget(self.keys_box)
-        column.addWidget(self.key_help)
         column.addWidget(self.help)
         column.addWidget(self.code_box)
         column.addWidget(self.error)
@@ -135,13 +121,11 @@ class ServiceRow(QFrame):
             self.keys_box.show()  # WeFlow ships with no key: each user enters their own
         self.own_key.setVisible(self.keys_box.isHidden())
         self.get_key.setVisible(not self.keys_box.isHidden())
-        self.key_help.setVisible(bool(self.key_help.text()) and not self.keys_box.isHidden())
 
     def _show_keys(self) -> None:
         self.keys_box.show()
         self.own_key.hide()
         self.get_key.show()
-        self.key_help.setVisible(bool(self.key_help.text()))
         self.api_key.setFocus()
 
     def _fail(self, message: str) -> None:
@@ -162,7 +146,7 @@ class ServiceRow(QFrame):
         self.help.hide()
         key, secret = self.api_key.text().strip(), self.api_secret.text().strip()
         if self.keys_box.isVisible() and bool(key) != bool(secret):
-            self._fail(f"Enter both the {self.key_word} key and the {self.key_word} secret.")
+            self._fail("Enter both the API key and the API secret.")
             return
         self._busy(True)
         self.bridge.connect_begin(self.service, key, secret, self._begun)
@@ -171,7 +155,7 @@ class ServiceRow(QFrame):
         self._busy(False)
         if not isinstance(result, PendingAuth):
             message = getattr(result, "message", "") or f"Can't reach {self.title}. Try again."
-            if "API key" in message or "app key" in message:
+            if "API key" in message:
                 self._show_keys()
             self._fail(message)
             return
@@ -201,7 +185,6 @@ class ServiceRow(QFrame):
             self.code_box.hide()
             self.help.hide()
             self.keys_box.hide()
-            self.key_help.hide()
             self.api_key.clear()
             self.api_secret.clear()
         else:
@@ -211,7 +194,7 @@ class ServiceRow(QFrame):
 
 class ServicesScroll(QScrollArea):
     """1.18.0: the service rows. As tall as they need when the screen has room,
-    and scrolling when it does not (three unconnected services are tall)."""
+    and scrolling when it does not."""
 
     def __init__(self, rows: QWidget) -> None:
         super().__init__()

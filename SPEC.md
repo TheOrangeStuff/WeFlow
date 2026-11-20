@@ -13,7 +13,7 @@ WeFlow is a desktop app for event photographers. The photographer inserts a memo
 1. Copies every JPEG and verifies each copy with a checksum.
 2. Signals **"Safe to remove"**, so the card can go back in the camera.
 3. Applies auto white balance, auto tone and an optional PNG watermark in the background.
-4. Uploads the results to SmugMug, Flickr or *(1.18.0)* Dropbox.
+4. Uploads the results to SmugMug or Flickr.
 
 All decisions are made once per event, before the shoot. **Inserting a card asks nothing.**
 
@@ -86,8 +86,8 @@ Fields carry over from v0.1 `Profile`, with these changes:
 | `id` | str (uuid4) | new | **New.** Stable key; folder name still derives from `name` slug at creation and never changes after |
 | `name` | str | `"YYYY-MM-DD New Event"` | Unique |
 | `folder` | str | slug of name at creation | **New.** Frozen at creation |
-| `destination` | `"none" \| "smugmug" \| "flickr" \| "dropbox"` | `"none"` | *(1.18.0)* `dropbox` added |
-| `album` | str | `""` | SmugMug gallery URL / AlbumUri / key, Flickr album title, or *(1.18.0)* Dropbox folder path (`/Clients/Smith`) |
+| `destination` | `"none" \| "smugmug" \| "flickr"` | `"none"` | |
+| `album` | str | `""` | SmugMug gallery URL / AlbumUri / key, or Flickr album title |
 | `album_name` | str | `""` | *(1.4.0)* The gallery's name when picked from the list (FR-39); display only, `""` when typed or pasted |
 | `flickr_privacy` | enum | `"private"` | private, friends, family, friends+family, public |
 | `keywords` | str | `""` | comma-separated |
@@ -198,13 +198,6 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
   - Flickr's API can't set an album's sort option, so once a batch has nothing left to upload, WeFlow reads the whole album (`photosets.getPhotos`, `extras=date_taken`) and applies the order with `photosets.reorderPhotos`. Photos already in the album are sorted too; equal dates keep their order.
   - Once per batch, not per photo. No call if the album is already in order.
   - A failed sort never fails a photo; a notice says the album will be sorted after the next card. SmugMug galleries are left as they are.
-- **FR-46** *(1.18.0)* Dropbox.
-  - Connect: each user makes their own Dropbox app ("Full Dropbox" access, `files.content.write` turned on) and enters its app key and secret. OAuth 2 code flow with no redirect, `token_access_type=offline`: the user approves in the browser and pastes the code. Only the refresh token is stored (`dropbox_token`); access tokens live in memory and are renewed once on a 401.
-  - The event's "album" is a folder path. Photos go to `<folder>/<processed name>` with `POST /2/files/upload`, `mode=add`, `autorename=false`. The file's `id` is the `remote_id`; there is no album step.
-  - A name conflict is checked against Dropbox's `content_hash`: the same photo means it is already up (FR-32: a lost answer never sends it twice). A different file is kept, and this photo is sent with `autorename=true`.
-  - `too_many_write_operations` and 429 wait (`Retry-After`, at most 10 s) and try again in place up to 4 times, then count as busy (FR-33). At most 4 uploads at once, at any speed.
-  - Folder list (FR-39): the folders at the top of the Dropbox and one level down, A to Z (Dropbox folders have no date). Create (FR-41) makes the folder at once; `Clients/Smith` makes both levels, and an existing folder is simply picked.
-  - Not sorted after upload: Dropbox shows folders in name order. Reprocess at 100% (FR-42) stays SmugMug only.
 - **FR-32** Upload and add-to-album are separate steps. A photo with a `remote_id` is **never uploaded again**; only the album step is retried.
 - **FR-33** Temporary errors (network, 5xx, 429) retry after 10, 20, 40, 60, 120, then every 300 s, up to 12 attempts.
   - Permanent errors (401/403, bad album, auth) fail at once with a plain-language message.
@@ -332,7 +325,7 @@ Transfer follows the newest batch. Process and Upload also follow it, except tha
   - Validate inline (red helper text under the field). The Save button is disabled until the form is valid.
 - **Settings:**
   - Library folder.
-  - SmugMug, Flickr and *(1.18.0)* Dropbox rows, each showing Connected/Not connected, a Connect/Reconnect button and a "Disconnect" link.
+  - SmugMug and Flickr rows, each showing Connected/Not connected, a Connect/Reconnect button and a "Disconnect" link.
   - API key fields stay hidden until the user clicks "Use my own API key…".
   - Card-detected sound on/off.
   - *(1.10.0)* "Eject the card when it's copied" on/off (default off, FR-16).
@@ -440,7 +433,7 @@ After each milestone:
 
 - RAW files and RAW+JPEG pairs.
 - Culling or per-photo editing.
-- Destinations other than SmugMug, Flickr and *(1.18.0)* Dropbox.
+- Destinations other than SmugMug and Flickr.
 - Wireless or tethered transfer.
 - Creating SmugMug galleries from the app.
 - Lightroom catalog sync.

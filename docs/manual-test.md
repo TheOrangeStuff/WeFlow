@@ -8,8 +8,7 @@ Tick each box. Note the build (`Settings` shows the version) and the machine.
 
 **You need:** the installer for the platform; an SD/CF card with 20–50 in-camera JPEGs
 (include a few portrait shots and a RAW+JPEG pair); a card reader; throwaway SmugMug
-and Flickr accounts with an empty test gallery / album name; a throwaway Dropbox account
-with its own "Full Dropbox" app (`files.content.write` on); a watermark PNG.
+and Flickr accounts with an empty test gallery / album name; a watermark PNG.
 
 ## 1. Install and first run
 - [ ] Installer opens with a double-click; no Python needed. (Unsigned builds: note the
@@ -22,7 +21,6 @@ with its own "Full Dropbox" app (`files.content.write` on); a watermark PNG.
 ## 2. Connect services (Settings)
 - [ ] SmugMug: Connect opens the browser; pasting the 6-digit code shows **Connected**.
 - [ ] Flickr: same, with Flickr's code.
-- [ ] Dropbox: same, with the code Dropbox shows. Still connected after quitting and reopening the next day.
 - [ ] A wrong code shows a plain error and stays **Not connected**.
 - [ ] Disconnect returns to **Not connected**; Reconnect works.
 - [ ] With no key stored, the API key fields show at once and "Get an API key…" opens the
@@ -66,7 +64,6 @@ with its own "Full Dropbox" app (`files.content.write` on); a watermark PNG.
 ## 7. Uploads
 - [ ] SmugMug event with the gallery link: all photos arrive once, with keywords.
 - [ ] Flickr event with a new album title: the album is created once; privacy is as set.
-- [ ] Dropbox event with a new `Test/WeFlow` folder: both levels are made, every photo arrives once. A file already in the folder with a photo's name is kept, and the photo arrives as "name (1).jpg".
 - [ ] Insert the same card again: "nothing new", and no duplicates online.
 - [ ] Turn Wi-Fi off mid-upload: the panel says it will keep trying. Turn it on: it finishes
       with no duplicates.
