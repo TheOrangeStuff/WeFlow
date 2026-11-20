@@ -33,17 +33,14 @@ GitHub Release called `v1.1.0`. The job stops if the tag does not match
 When Actions can't run, build on your own Mac and Windows PC and publish with
 `packaging/publish.sh` (see its header). Push the tag, then:
 
-1. Anywhere: `./packaging/publish.sh draft` makes draft releases in this repo and the
-   old releases repo. Drafts are never offered as updates.
+1. Anywhere: `./packaging/publish.sh draft` makes a draft release. Drafts are never
+   offered as updates.
 2. On the Mac, at the tag: `./packaging/build_macos.sh`, then
    `./packaging/publish.sh upload dist/*.dmg`.
-3. On Windows, at the tag: `pwsh packaging/build_windows.ps1`, then
-   `bash packaging/publish.sh upload dist/*.exe dist/*.exe.sha256` (Git Bash). Without
-   bash, upload both files with `gh release upload <tag> <files> --clobber`, then copy
-   them to `--repo TheOrangeStuff/weflow-releases` renamed without `-WINDOWS` (apps on
-   1.18.0 or older download those names), with the name inside the `.sha256` changed too.
-4. Anywhere: `./packaging/publish.sh go` checks both repos have all three files under
-   their names, then publishes.
+3. On Windows, at the tag: `pwsh packaging/build_windows.ps1`, then upload the `.exe` and
+   `.exe.sha256` with `gh release upload <tag> <files> --clobber` (or `publish.sh upload`
+   from Git Bash).
+4. Anywhere: `./packaging/publish.sh go` checks all three files are there, then publishes.
 
 ### Where releases live
 
@@ -58,17 +55,11 @@ ask it for its latest release to know when to offer an update (`WeFlow/core/upda
 
 ### The old releases repo
 
-Until 1.18.0 this repo was private, so installers were also published to
+Until 1.18.0 this repo was private, so installers went to
 [`TheOrangeStuff/weflow-releases`](https://github.com/TheOrangeStuff/weflow-releases),
-and apps on 1.18.0 or older still check that repo. The Release job keeps copying each
-release there so those apps can update; once they have, they check this repo instead.
-
-- **Token (one-time setup):** a fine-grained personal access token limited to
-  `weflow-releases` with **Contents: Read and write**, saved in this repo as the
-  Actions secret `RELEASES_REPO_TOKEN`. Without it the Release job fails before
-  publishing anything.
-- **Dropping it later:** once nobody runs 1.18.0 or older, remove the copy step, the
-  token check and `OLD_RELEASES_REPO` (see DECISIONS.md).
+which apps on 1.18.0 or older still check. It is archived with 1.19.1 as its last
+release: those apps update to 1.19.1, which checks this repo. Don't delete it, or they
+are never offered an update.
 
 ## Signing and notarisation
 
@@ -91,7 +82,7 @@ No SmugMug or Flickr credential is built into WeFlow or kept on GitHub, in the r
 a CI secret. Each user enters their own API key and secret in Settings (or at first run)
 and signs in; both live only in that computer's keychain. `tests/test_architecture.py`
 fails if a key reaches the workflow or the package, and lists the only CI secrets allowed:
-the optional signing ones above and `RELEASES_REPO_TOKEN`.
+the optional signing ones above.
 
 ## What an update must not break
 

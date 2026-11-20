@@ -133,7 +133,9 @@ owner and accepted on 2026-11-11.
     so 1.19.1 and newer check its latest release for updates and download installers
     from it. Apps on 1.18.0 or older still check `weflow-releases`, so the Release job
     keeps copying each release there (`OLD_RELEASES_REPO`, `RELEASES_REPO_TOKEN`). Once
-    nobody runs those versions, the copy can be dropped. The source repo's release notes
+    nobody runs those versions, the copy can be dropped. *(After 1.19.1 the copy was
+    dropped and `weflow-releases` archived, not deleted: its last release, 1.19.1, moves
+    old apps onto this repo. `RELEASES_REPO_TOKEN` is no longer used.)* The source repo's release notes
     now come from `CHANGELOG.md` instead of GitHub's generated list. **(owner's choice)**
 35b. **Installer names say the platform (1.19.1; 1.19.0 was tagged but never released):** `WeFlow-<ver>-MACOS-arm64.dmg` and
     `WeFlow-Setup-<ver>-WINDOWS.exe` (+ `.sha256`). Update now (FR-44) downloads the new

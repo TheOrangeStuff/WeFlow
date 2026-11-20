@@ -53,5 +53,4 @@ def test_no_credentials_ship_with_the_app_or_sit_in_ci() -> None:
         "APPLE_APP_PASSWORD",
         "WINDOWS_CERT_PFX_BASE64",
         "WINDOWS_CERT_PASSWORD",
-        "RELEASES_REPO_TOKEN",
     }

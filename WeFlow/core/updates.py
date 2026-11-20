@@ -3,9 +3,8 @@
 Releases are published on ``RELEASES_REPO``, which anyone can read without a token.
 This module only looks; it never downloads or installs anything.
 
-Versions up to 1.18.0 check ``OLD_RELEASES_REPO`` instead, from when the source repo
-was private, so the Release job in CI still copies each release there (it reads
-``OLD_RELEASES_REPO`` from this file).
+Versions up to 1.18.0 check the archived ``TheOrangeStuff/weflow-releases`` instead,
+from when the source repo was private. Its last release is 1.19.1, which checks here.
 """
 
 from __future__ import annotations
@@ -17,7 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 RELEASES_REPO = "TheOrangeStuff/WeFlow"
-OLD_RELEASES_REPO = "TheOrangeStuff/weflow-releases"
 LATEST_API = f"https://api.github.com/repos/{RELEASES_REPO}/releases/latest"
 DOWNLOAD_PAGE = f"https://github.com/{RELEASES_REPO}/releases/latest"
 TIMEOUT_SECONDS = 10.0

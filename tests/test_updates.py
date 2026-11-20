@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +13,6 @@ from WeFlow.core import updates
 from WeFlow.core.updates import (
     DOWNLOAD_PAGE,
     LATEST_API,
-    OLD_RELEASES_REPO,
     RELEASES_REPO,
     Update,
 )
@@ -99,14 +97,8 @@ def test_update_fetch_asks_the_public_repo_without_credentials(
     assert "Authorization" not in kwargs["headers"]
 
 
-def test_update_checks_the_main_repo_and_ci_copies_to_the_old_one() -> None:
-    """New apps check the source repo; ci.yml still copies releases for 1.18.0 and older."""
+def test_update_checks_the_main_repo() -> None:
     assert RELEASES_REPO == "TheOrangeStuff/WeFlow"
-    assert OLD_RELEASES_REPO == "TheOrangeStuff/weflow-releases"
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert r"""sed -n 's/^OLD_RELEASES_REPO = "\(.*\)"$/\1/p' WeFlow/core/updates.py""" in workflow
-    source = (ROOT / "WeFlow" / "core" / "updates.py").read_text(encoding="utf-8")
-    assert re.findall(r'^OLD_RELEASES_REPO = "(.*)"$', source, re.M) == [OLD_RELEASES_REPO]
 
 
 # ---------------------------------------------------------------------------- UI
