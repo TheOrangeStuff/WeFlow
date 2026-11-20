@@ -1,4 +1,4 @@
-"""Update check: ask the public releases repo, offer the download, never nag."""
+"""Update check: ask the public WeFlow repo, offer the download, never nag."""
 
 from __future__ import annotations
 
@@ -11,7 +11,13 @@ from PySide6.QtCore import Qt
 
 from tests.ui_states import batch
 from WeFlow.core import updates
-from WeFlow.core.updates import DOWNLOAD_PAGE, LATEST_API, RELEASES_REPO, Update
+from WeFlow.core.updates import (
+    DOWNLOAD_PAGE,
+    LATEST_API,
+    OLD_RELEASES_REPO,
+    RELEASES_REPO,
+    Update,
+)
 from WeFlow.ui.bridge import Bridge
 from WeFlow.ui.settings_dialog import SettingsDialog
 
@@ -93,12 +99,14 @@ def test_update_fetch_asks_the_public_repo_without_credentials(
     assert "Authorization" not in kwargs["headers"]
 
 
-def test_update_release_job_reads_the_same_repo_name() -> None:
-    """ci.yml takes the public repo from updates.py with this exact pattern."""
+def test_update_checks_the_main_repo_and_ci_copies_to_the_old_one() -> None:
+    """New apps check the source repo; ci.yml still copies releases for 1.18.0 and older."""
+    assert RELEASES_REPO == "TheOrangeStuff/WeFlow"
+    assert OLD_RELEASES_REPO == "TheOrangeStuff/weflow-releases"
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert r"""sed -n 's/^RELEASES_REPO = "\(.*\)"$/\1/p' WeFlow/core/updates.py""" in workflow
+    assert r"""sed -n 's/^OLD_RELEASES_REPO = "\(.*\)"$/\1/p' WeFlow/core/updates.py""" in workflow
     source = (ROOT / "WeFlow" / "core" / "updates.py").read_text(encoding="utf-8")
-    assert re.findall(r'^RELEASES_REPO = "(.*)"$', source, re.M) == [RELEASES_REPO]
+    assert re.findall(r'^OLD_RELEASES_REPO = "(.*)"$', source, re.M) == [OLD_RELEASES_REPO]
 
 
 # ---------------------------------------------------------------------------- UI

@@ -1,7 +1,7 @@
 """One-click updates on Windows (FR-44).
 
-The installer and its ``.sha256`` checksum are downloaded from the public releases
-repo, the checksum is checked, and the installer then runs silently: it closes
+The installer and its ``.sha256`` checksum are downloaded from WeFlow's public GitHub
+releases, the checksum is checked, and the installer then runs silently: it closes
 WeFlow, upgrades it in place (events, settings and sign-ins untouched) and starts
 it again. macOS and source runs keep "Download", which opens the release page.
 """

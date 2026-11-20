@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.19.0 — 2026-11-20
+
+- WeFlow's downloads and updates now come from its main page on GitHub,
+  github.com/TheOrangeStuff/WeFlow. Nothing changes in how you update.
+- Also in this version: everything from 1.18.0, including uploads to Dropbox.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.18.0 — 2026-11-20
 
 - New: upload to **Dropbox**. Connect it in Settings with your own Dropbox app key,

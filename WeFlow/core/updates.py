@@ -1,8 +1,11 @@
-"""Ask the public releases repo whether a newer WeFlow exists.
+"""Ask WeFlow's public GitHub repo whether a newer WeFlow exists.
 
-The source repo is private, so installers are also published to ``RELEASES_REPO``,
-which anyone can read without a token. This module only looks; it never downloads or
-installs anything. The Release job in CI reads ``RELEASES_REPO`` from this file.
+Releases are published on ``RELEASES_REPO``, which anyone can read without a token.
+This module only looks; it never downloads or installs anything.
+
+Versions up to 1.18.0 check ``OLD_RELEASES_REPO`` instead, from when the source repo
+was private, so the Release job in CI still copies each release there (it reads
+``OLD_RELEASES_REPO`` from this file).
 """
 
 from __future__ import annotations
@@ -13,7 +16,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-RELEASES_REPO = "TheOrangeStuff/weflow-releases"
+RELEASES_REPO = "TheOrangeStuff/WeFlow"
+OLD_RELEASES_REPO = "TheOrangeStuff/weflow-releases"
 LATEST_API = f"https://api.github.com/repos/{RELEASES_REPO}/releases/latest"
 DOWNLOAD_PAGE = f"https://github.com/{RELEASES_REPO}/releases/latest"
 TIMEOUT_SECONDS = 10.0

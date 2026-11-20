@@ -19,7 +19,7 @@ After that, inserting a card asks nothing.
 
 No Python or other software is needed.
 
-Installers are at <https://github.com/TheOrangeStuff/weflow-releases/releases/latest>.
+Installers are at <https://github.com/TheOrangeStuff/WeFlow/releases/latest>.
 
 ## First start
 

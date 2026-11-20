@@ -152,25 +152,32 @@ jobs:
             echo "::error::CHANGELOG.md has no '## $version' section. It is shown as What's New in the app and on the public release page."
             exit 1
           fi
-      - name: Public releases repo is reachable
+      - name: Old releases repo is reachable
         env:
           GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
         run: |
-          repo="$(sed -n 's/^RELEASES_REPO = "\(.*\)"$/\1/p' WeFlow/core/updates.py)"
+          repo="$(sed -n 's/^OLD_RELEASES_REPO = "\(.*\)"$/\1/p' WeFlow/core/updates.py)"
           if [ -z "$repo" ]; then
-            echo "::error::RELEASES_REPO was not found in WeFlow/core/updates.py."
+            echo "::error::OLD_RELEASES_REPO was not found in WeFlow/core/updates.py."
             exit 1
           fi
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::The RELEASES_REPO_TOKEN secret is not set, so $repo cannot be updated and installed apps would never see this version. See packaging/README.md."
+            echo "::error::The RELEASES_REPO_TOKEN secret is not set, so $repo cannot be updated and apps on 1.18.0 or older would never see this version. See packaging/README.md."
             exit 1
           fi
-          echo "RELEASES_REPO=$repo" >> "$GITHUB_ENV"
+          echo "OLD_RELEASES_REPO=$repo" >> "$GITHUB_ENV"
+      - name: Release notes from the changelog
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '/^## /{on = ($2 == v); next} on' CHANGELOG.md > notes.md
+          grep -q '[^[:space:]]' notes.md || echo "WeFlow $version" > notes.md
       - uses: actions/download-artifact@v8
         with:
           pattern: WeFlow-*
           path: dist
           merge-multiple: true
+      # Installed apps (1.19.0 and newer) check this repo's latest release for updates
+      # (WeFlow/core/updates.py).
       - name: Publish the installers
         env:
           GH_TOKEN: ${{ github.token }}
@@ -180,20 +187,17 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" dist/* --clobber
           else
             gh release create "$GITHUB_REF_NAME" dist/* --verify-tag \
-              --title "WeFlow ${GITHUB_REF_NAME#v}" --generate-notes
+              --title "WeFlow ${GITHUB_REF_NAME#v}" --notes-file notes.md
           fi
-      # The source repo is private. Installed apps look for new versions in the public
-      # repo (WeFlow/core/updates.py), so the same installers are published there too.
-      - name: Publish the installers to the public releases repo
+      # Apps on 1.18.0 or older still check the old releases repo, so the same release is
+      # copied there until nobody runs those versions.
+      - name: Copy the installers to the old releases repo
         env:
           GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          awk -v v="$version" '/^## /{on = ($2 == v); next} on' CHANGELOG.md > notes.md
-          grep -q '[^[:space:]]' notes.md || echo "WeFlow $version" > notes.md
-          if gh release view "$GITHUB_REF_NAME" --repo "$RELEASES_REPO" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --repo "$RELEASES_REPO" --clobber
+          if gh release view "$GITHUB_REF_NAME" --repo "$OLD_RELEASES_REPO" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --repo "$OLD_RELEASES_REPO" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/* --repo "$RELEASES_REPO" \
-              --title "WeFlow $version" --notes-file notes.md
+            gh release create "$GITHUB_REF_NAME" dist/* --repo "$OLD_RELEASES_REPO" \
+              --title "WeFlow ${GITHUB_REF_NAME#v}" --notes-file notes.md
           fi

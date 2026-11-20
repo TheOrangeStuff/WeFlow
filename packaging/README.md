@@ -33,7 +33,8 @@ GitHub Release called `v1.1.0`. The job stops if the tag does not match
 When Actions can't run, build on your own Mac and Windows PC and publish with
 `packaging/publish.sh` (see its header). Push the tag, then:
 
-1. Anywhere: `./packaging/publish.sh draft` makes draft releases in both repos. Drafts
+1. Anywhere: `./packaging/publish.sh draft` makes draft releases in this repo and the
+   old releases repo. Drafts
    are never offered as updates.
 2. On the Mac, at the tag: `./packaging/build_macos.sh`, then
    `./packaging/publish.sh upload dist/*.dmg`.
@@ -43,24 +44,30 @@ When Actions can't run, build on your own Mac and Windows PC and publish with
 4. Anywhere: `./packaging/publish.sh go` checks both repos have all three files, then
    publishes.
 
-### The public releases repo
+### Where releases live
 
-This repo is private, so nobody without access can download from its releases, and an
-installed app cannot see them. The Release job therefore publishes the same installers
-to the public repo [`TheOrangeStuff/weflow-releases`](https://github.com/TheOrangeStuff/weflow-releases),
-which holds only a README and the releases. Installed apps ask that repo for its latest
-release to know when to offer an update (`WeFlow/core/updates.py`, which is also where
-the job reads the repo name from).
+Releases are published on this repo, which is public. Installed apps (1.19.0 and newer)
+ask it for its latest release to know when to offer an update (`WeFlow/core/updates.py`).
 
-- **Token (one-time setup):** create a fine-grained personal access token limited to
-  `weflow-releases` with **Contents: Read and write**, and save it in this repo as the
-  Actions secret `RELEASES_REPO_TOKEN`. Without it the Release job fails before
-  publishing anything.
-- **Release notes** on the public page are the `## <version>` section of `CHANGELOG.md`,
-  so write that section for users. Without one, the notes are just the version name.
-- **Pre-releases and drafts** in the public repo are never offered as updates.
+- **Release notes** are the `## <version>` section of `CHANGELOG.md`, so write that
+  section for users. Without one, the notes are just the version name.
+- **Pre-releases and drafts** are never offered as updates.
 - **Everything in an installer is public**, which is one reason no API key is built in
   (below).
+
+### The old releases repo
+
+Until 1.18.0 this repo was private, so installers were also published to
+[`TheOrangeStuff/weflow-releases`](https://github.com/TheOrangeStuff/weflow-releases),
+and apps on 1.18.0 or older still check that repo. The Release job keeps copying each
+release there so those apps can update; once they have, they check this repo instead.
+
+- **Token (one-time setup):** a fine-grained personal access token limited to
+  `weflow-releases` with **Contents: Read and write**, saved in this repo as the
+  Actions secret `RELEASES_REPO_TOKEN`. Without it the Release job fails before
+  publishing anything.
+- **Dropping it later:** once nobody runs 1.18.0 or older, remove the copy step, the
+  token check and `OLD_RELEASES_REPO` (see DECISIONS.md).
 
 ## Signing and notarisation
 
