@@ -31,12 +31,16 @@ SERVICE_NAMES = {"smugmug": "SmugMug", "flickr": "Flickr", "none": "this compute
 
 
 class UploadError(Exception):
-    """An upload step failed. ``permanent`` errors are not retried (FR-33)."""
+    """An upload step failed. ``permanent`` errors are not retried (FR-33).
 
-    def __init__(self, message: str, permanent: bool = False) -> None:
+    ``busy`` means the service asked us to slow down (1.17.0: fewer uploads at once).
+    """
+
+    def __init__(self, message: str, permanent: bool = False, busy: bool = False) -> None:
         super().__init__(message)
         self.message = message
         self.permanent = permanent
+        self.busy = busy
 
 
 @dataclass(frozen=True)
@@ -152,7 +156,7 @@ def _smugmug_http_error(status: int) -> UploadError:
             "SmugMug can't find that gallery. Check the gallery link in the event.", permanent=True
         )
     if status == 429 or status >= 500:
-        return UploadError("SmugMug is busy. WeFlow will keep trying.")
+        return UploadError("SmugMug is busy. WeFlow will keep trying.", busy=True)
     return UploadError(
         "SmugMug refused the upload. Check the gallery in the event.", permanent=True
     )

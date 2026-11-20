@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.0 — 2026-11-19
+
+- At MAX speed, SmugMug uploads now find the fastest setting for your connection by
+  themselves, sending up to 12 photos at once instead of 4.
+- If SmugMug says it is busy, WeFlow sends fewer photos at once and keeps going.
+- Flickr still sends at most 4 photos at once.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.16.0 — 2026-11-19
 
 - New for SmugMug events: **Reprocess at 100%**. After a card's photos are uploaded,

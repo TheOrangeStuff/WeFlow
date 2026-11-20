@@ -603,3 +603,17 @@ machine (2 cores / 4 threads) with 24 MP, 12 MB JPEGs; three things held it back
   touch every library and break any outside links to them. Names that clash with the
   folders beside it (`processed`, `SmugMug Large Processed`) or Windows reserved names get
   " originals" added.
+
+## 1.17.0 — MAX tunes SmugMug uploads at once
+
+- **Tuned while uploading, not by a speed test first** (the owner chose this). A speed
+  test measures the line to a third-party server, but the slow part is each upload's
+  round trip and SmugMug's processing, which only real uploads show. Tuning also sends
+  nothing extra and adds no wait before the first photo.
+- **MAX only, 4 to 12.** Low and Medium keep 1 and 2 so they leave bandwidth free. 12 is
+  a ceiling so a fast line never hammers SmugMug; a 429 or 5xx halves the count.
+- **Flickr is capped at 4 at any speed** (the owner asked): its API key allows about
+  3,600 calls an hour, so more at once wouldn't help. A photo that finds the cap full
+  waits 0.25 s and tries again; that is not counted as an attempt.
+- **Windows short of photos are ignored**, so a slow processing stage never makes the
+  tuner drop uploads. The count is not saved: each MAX session starts at 4 again.

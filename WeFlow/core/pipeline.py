@@ -57,6 +57,14 @@ def default_process_workers() -> int:
 
 
 SPEED_LEVELS = ("low", "medium", "high")
+# 1.17.0: at MAX, UploadTuner raises SmugMug uploads at once from 4 up to this.
+MAX_UPLOADS = 12
+# Never more uploads at once to these services, at any speed (Flickr's API call limit).
+DESTINATION_LIMITS = {"flickr": 4}
+GATE_WAIT = 0.25  # seconds a photo waits when its service's limit is full
+TUNE_WINDOW = 15.0  # seconds of uploading per measurement
+TUNE_HOLD = 60.0  # seconds to stay at a count before trying one more
+TUNE_GAIN = 1.10  # one more upload at once must be this much faster to keep
 
 
 def total_memory() -> int:
@@ -135,10 +143,122 @@ class Slots:
             self._used -= 1
             self._cond.notify_all()
 
+    def try_acquire(self) -> bool:
+        """Take a free slot without waiting. Returns ``False`` when none is free."""
+        with self._cond:
+            if self._closed or self._used >= self._limit:
+                return False
+            self._used += 1
+            return True
+
     def close(self) -> None:
         with self._cond:
             self._closed = True
             self._cond.notify_all()
+
+
+class UploadTuner:
+    """Finds how many uploads at once move the most bytes (MAX speed, 1.17.0).
+
+    Each window in which the uploads kept every slot busy is a measurement. While a
+    count is at least 10% faster than the best so far, try one more. When it isn't, go
+    back to the best count and hold for a while, then try one more again, since the
+    connection can change. A "busy" answer from the service halves the count and holds.
+    Windows that were short of photos (processing is behind) say nothing about the
+    network and are ignored.
+    """
+
+    def __init__(
+        self,
+        start: int,
+        ceiling: int,
+        window: float = TUNE_WINDOW,
+        hold: float = TUNE_HOLD,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._ceiling = max(1, ceiling)
+        self._limit = max(1, min(start, self._ceiling))
+        self._window = window
+        self._hold = hold
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._best_limit = self._limit
+        self._best_rate: float | None = None
+        self._hold_until = 0.0
+        self._active = 0
+        self._last = clock()
+        self._reset(self._last)
+
+    @property
+    def limit(self) -> int:
+        return self._limit
+
+    def begin(self) -> None:
+        """An upload started."""
+        with self._lock:
+            self._advance()
+            self._active += 1
+
+    def end(self, sent: int) -> int | None:
+        """An upload ended, having sent ``sent`` bytes (0 if it failed).
+        Returns a new limit when it changes."""
+        with self._lock:
+            now = self._advance()
+            self._active = max(0, self._active - 1)
+            self._bytes += sent
+            self._done += 1 if sent else 0
+            return self._judge(now)
+
+    def busy(self) -> int | None:
+        """The service said it is busy. Returns a new limit when it changes."""
+        with self._lock:
+            now = self._advance()
+            old = self._limit
+            self._limit = max(1, old // 2)
+            self._best_limit, self._best_rate = self._limit, None
+            self._hold_until = now + self._hold
+            self._reset(now)
+            return self._limit if self._limit != old else None
+
+    def _advance(self) -> float:
+        now = self._clock()
+        self._busy_time += self._active * (now - self._last)
+        self._last = now
+        return now
+
+    def _reset(self, now: float) -> None:
+        self._start = now
+        self._bytes = 0
+        self._done = 0
+        self._busy_time = 0.0
+
+    def _judge(self, now: float) -> int | None:
+        elapsed = now - self._start
+        if elapsed < self._window or (self._done < 2 * self._limit and elapsed < 4 * self._window):
+            return None
+        full = self._busy_time >= 0.9 * elapsed * self._limit
+        rate = self._bytes / elapsed
+        self._reset(now)
+        if not full:
+            return None  # waiting on photos, not the network
+        old = self._limit
+        if now < self._hold_until:
+            if self._limit == self._best_limit:
+                self._best_rate = rate
+            return None
+        if self._best_rate is None or self._limit <= self._best_limit:
+            self._best_rate, self._best_limit = rate, self._limit  # (re)measure, then probe
+        elif rate > self._best_rate * TUNE_GAIN:
+            self._best_rate, self._best_limit = rate, self._limit
+        else:  # one more didn't help: back to the best count, and stay a while
+            self._limit = self._best_limit
+            self._hold_until = now + self._hold
+            return self._limit if self._limit != old else None
+        if self._limit < self._ceiling:
+            self._limit += 1
+        else:
+            self._hold_until = now + self._hold
+        return self._limit if self._limit != old else None
 
 
 class _DelayQueue:
@@ -264,10 +384,12 @@ class Pipeline:
         process, upload, _ = speed_limits("medium")
         self._process_slots = Slots(process_workers or process)
         self._upload_slots = Slots(upload_workers or upload)
+        self._tuner: UploadTuner | None = None  # only at MAX
+        self._gates = {dest: Slots(n) for dest, n in DESTINATION_LIMITS.items()}
         self._spawn("copy", self._copy_loop)
         for n in range(process_workers or max(most_process, process)):
             self._spawn(f"process-{n}", self._process_loop)
-        for n in range(upload_workers or most_upload):
+        for n in range(upload_workers or max(most_upload, MAX_UPLOADS)):
             self._spawn(f"upload-{n}", self._upload_loop)
         self._spawn("flush", self._flush_loop)
 
@@ -319,6 +441,13 @@ class Pipeline:
         if self._speed == "high" and self._copying:
             process = max(1, process - 1)  # MAX works during the copy: leave the copier a core
         fixed_process, fixed_upload = self._fixed
+        with self._lock:
+            if self._speed != "high" or fixed_upload:
+                self._tuner = None
+            elif self._tuner is None:
+                self._tuner = UploadTuner(upload, MAX_UPLOADS)
+            if self._tuner is not None:
+                upload = self._tuner.limit
         self._process_slots.set_limit(fixed_process or process)
         self._upload_slots.set_limit(fixed_upload or upload)
         self._budget.set_limit(budget)
@@ -821,13 +950,17 @@ class Pipeline:
             self._enqueue("process", task[0], photo.name)
             self._touch(batch.id)
             return None
+        gate = self._gates.get(batch.destination)
+        tuner = None if gate is not None else self._tuner
         try:
             uploader = self._uploader(batch.destination)
             if not photo.remote_id:  # FR-32: a stored remote_id is never uploaded again
+                if gate is not None and not gate.try_acquire():
+                    return GATE_WAIT  # the service's limit is full: not an attempt
                 with self._lock:
                     meter = self._upload_meters.setdefault(batch.id, RateMeter(20.0))
                 size = _size(source)
-                photo.remote_id = uploader.upload(source, event)
+                photo.remote_id = self._send(uploader, source, event, size, gate, tuner)
                 state.put_photo(photo)
                 stage = "album"
                 with self._lock:
@@ -842,6 +975,8 @@ class Pipeline:
             else:  # a bug or an unplanned failure: keep the photo moving, never drop it
                 log.exception("upload of %s failed unexpectedly", photo.name)
                 exc = UploadError("The upload hit a problem. WeFlow will keep trying.")
+            if exc.busy and tuner is not None:
+                self._tune(tuner, tuner.busy())
             photo.attempts += 1
             photo.error = exc.message
             if exc.permanent or photo.attempts >= MAX_ATTEMPTS:
@@ -869,6 +1004,38 @@ class Pipeline:
         self._sort_when_settled(uploader, event, state, batch)
         self._queue_large(event, state, batch)
         return None
+
+    def _send(
+        self,
+        uploader: Uploader,
+        source: Path,
+        event: Profile,
+        size: int,
+        gate: Slots | None,
+        tuner: UploadTuner | None,
+    ) -> str:
+        """Send one file, holding the service's slot and telling the tuner how it went."""
+        if tuner is not None:
+            tuner.begin()
+        sent = 0
+        try:
+            remote_id = uploader.upload(source, event)
+            sent = size
+            return remote_id
+        finally:
+            if gate is not None:
+                gate.release()
+            if tuner is not None:
+                self._tune(tuner, tuner.end(sent))
+
+    def _tune(self, tuner: UploadTuner, limit: int | None) -> None:
+        if limit is None:
+            return
+        with self._lock:
+            if self._tuner is not tuner:
+                return  # the speed changed meanwhile
+            self._upload_slots.set_limit(limit)
+        log.info("MAX speed: %d uploads at once", limit)
 
     def _sort_when_settled(
         self, uploader: Uploader, event: Profile, state: EventState, batch: Batch

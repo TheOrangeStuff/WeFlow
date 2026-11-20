@@ -755,3 +755,97 @@ def test_fr42_off_or_not_smugmug_makes_no_large_copies(
     recorder.wait_state(batch.id, "done")
     time.sleep(0.3)
     assert not (store.event_root(event) / "SmugMug Large Processed").exists()
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def run_window(tuner, clock: FakeClock, rate: float, busy: bool = True) -> int | None:  # type: ignore[no-untyped-def]
+    """One 15 s window: ``tuner.limit`` uploads end at ``rate`` bytes/s in total."""
+    limit = tuner.limit
+    n = limit if busy else 1  # uploads running through the window
+    for _ in range(n):
+        tuner.begin()
+    clock.now += 15.0
+    result = None
+    each = int(rate * 15.0 / (2 * limit))
+    for _ in range(2 * limit):  # enough uploads ended for a measurement
+        tuner.begin()
+        result = tuner.end(each) or result
+    for _ in range(n):
+        tuner.end(0)
+    return result
+
+
+def make_tuner():  # type: ignore[no-untyped-def]
+    from WeFlow.core.pipeline import UploadTuner
+
+    clock = FakeClock()
+    return UploadTuner(4, 12, clock=clock), clock
+
+
+def test_upload_tuner_adds_uploads_while_faster_then_holds_at_best() -> None:
+    tuner, clock = make_tuner()
+    assert run_window(tuner, clock, 20e6) == 5  # first measurement, then probe
+    assert run_window(tuner, clock, 25e6) == 6  # 25% faster: keep going
+    assert run_window(tuner, clock, 26e6) == 5  # only 4% faster: back to the best
+    for _ in range(3):  # 60 s of holding at 5
+        assert run_window(tuner, clock, 26e6) is None
+    assert run_window(tuner, clock, 25e6) == 6  # after the hold, probe again
+
+
+def test_upload_tuner_ignores_windows_short_of_photos() -> None:
+    tuner, clock = make_tuner()
+    assert run_window(tuner, clock, 1e6, busy=False) is None
+    assert tuner.limit == 4
+
+
+def test_upload_tuner_halves_on_busy_and_stops_at_ceiling() -> None:
+    tuner, clock = make_tuner()
+    assert tuner.busy() == 2
+    clock.now += 61.0
+    from WeFlow.core.pipeline import UploadTuner
+
+    top = UploadTuner(12, 12, clock=clock)
+    assert run_window(top, clock, 50e6) is None and top.limit == 12
+
+
+def test_speed_max_tunes_uploads_others_dont(make_pipeline) -> None:  # type: ignore[no-untyped-def]
+    pipeline = make_pipeline(upload_workers=None)
+    pipeline.set_speed("high")
+    assert pipeline._tuner is not None and pipeline._upload_slots.limit == 4
+    pipeline._tune(pipeline._tuner, 9)
+    assert pipeline._upload_slots.limit == 9
+    pipeline.set_speed("medium")
+    assert pipeline._tuner is None and pipeline._upload_slots.limit == 2
+
+
+def test_flickr_never_more_than_4_uploads_at_once(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    class Counting(FakeUploader):
+        def __init__(self) -> None:
+            super().__init__()
+            self.now = self.peak = 0
+            self.count_lock = threading.Lock()
+
+        def upload(self, path: Path, event: Profile) -> str:
+            with self.count_lock:
+                self.now += 1
+                self.peak = max(self.peak, self.now)
+            time.sleep(0.05)
+            with self.count_lock:
+                self.now -= 1
+            return super().upload(path, event)
+
+    fake = Counting()
+    pipeline = make_pipeline(fake, upload_workers=12)
+    batch = pipeline.submit(card, flickr_event(store), "CARD_A", is_card=True)
+    recorder.wait_state(batch.id, "done")
+    assert len(fake.uploads) == NEW_PHOTOS
+    assert 1 <= fake.peak <= 4
