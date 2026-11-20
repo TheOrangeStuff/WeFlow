@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.16.0 — 2026-11-19
+
+- New for SmugMug events: **Reprocess at 100%**. After a card's photos are uploaded,
+  WeFlow makes full-size copies of them, with no size limit, in a folder called
+  "SmugMug Large Processed" inside the event's folder. Turn it on in the event's settings.
+- A new event's originals now go in a folder named after the event, instead of
+  "originals". Events you already have keep their folders as they are.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.15.0 — 2026-11-18
 
 - At MAX speed, WeFlow now starts processing and uploading each photo as soon as it is

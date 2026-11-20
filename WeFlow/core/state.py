@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import IO, Any
 
-from .config import atomic_write_text
+from .config import LARGE_FOLDER, LEGACY_ORIGINALS, atomic_write_text
 
 BATCH_STATES = (
     "copying",
@@ -47,6 +47,7 @@ class PhotoRecord:
     original: str = ""  # the camera's file name, without extension
     seq: int = 0  # 1-based import order within the event; 0 = not given yet
     output: str = ""  # processed file name, fixed when first processed; "" = ``name``
+    large: str = ""  # 1.16.0 (FR-42): "" | "done" | "failed" for the full-size copy
 
     @property
     def processed_name(self) -> str:
@@ -98,8 +99,9 @@ def _load_into(cls: type[Any], data: dict[str, Any]) -> Any:
 class EventState:
     """Photo and batch records of one event. Thread-safe."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, originals: str = LEGACY_ORIGINALS) -> None:
         self.root = root
+        self._originals = originals
         self.dir = root / ".WeFlow"
         self.state_path = self.dir / "state.json"
         self.journal_path = self.dir / "journal.jsonl"
@@ -114,7 +116,12 @@ class EventState:
 
     @property
     def originals(self) -> Path:
-        return self.root / "originals"
+        return self.root / self._originals
+
+    @property
+    def large(self) -> Path:
+        """FR-42 (1.16.0): full-size copies made after a SmugMug upload."""
+        return self.root / LARGE_FOLDER
 
     @property
     def processed(self) -> Path:

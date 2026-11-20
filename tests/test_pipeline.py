@@ -28,7 +28,7 @@ def flickr_event(store: Store, **changes: object) -> Profile:
 
 
 def photos(store: Store, event: Profile) -> EventState:
-    return EventState(store.event_root(event))
+    return EventState(store.event_root(event), event.originals_dir)
 
 
 def test_card_goes_copying_safe_processing_uploading_done(
@@ -51,8 +51,8 @@ def test_card_goes_copying_safe_processing_uploading_done(
     # 1.5.0: processed copies are deleted once uploaded; only originals remain.
     assert not (root / "processed").exists()
     assert not list((root / ".WeFlow" / "work").glob("*.[jJ][pP]*[gG]"))
-    assert len(list((root / "originals").iterdir())) == NEW_PHOTOS
-    assert all(p.name.startswith("IMG_") for p in (root / "originals").iterdir())  # FR-13
+    assert len(list((root / "Gala").iterdir())) == NEW_PHOTOS
+    assert all(p.name.startswith("IMG_") for p in (root / "Gala").iterdir())  # FR-13
 
 
 def test_fr14_second_insert_counts_already_imported(
@@ -108,7 +108,7 @@ def test_fr15_error_batch_never_safe(
     assert recorder.notices("safe") == []
     assert recorder.notices("error")
     assert pipeline.snapshot()[0].state == "error"
-    assert not list((store.event_root(event) / "originals").glob(".tmp-*"))
+    assert not list((store.event_root(event) / event.originals_dir).glob(".tmp-*"))
 
 
 def test_fr15_removed_card_is_an_error_not_safe(
@@ -513,7 +513,7 @@ def test_fr26_processed_copies_and_uploads_use_the_naming_rule(
     expected = [f"Smith-Wedding-{n:04d}.jpg" for n in range(1, NEW_PHOTOS + 1)]
     assert sorted(p.name for p in (root / "processed").iterdir()) == expected
     assert sorted(fake.uploads) == expected
-    assert all(p.name.startswith("IMG_") for p in (root / "originals").iterdir())  # FR-13
+    assert all(p.name.startswith("IMG_") for p in (root / "Gala").iterdir())  # FR-13
     records = sorted(photos(store, event).photos.values(), key=lambda p: p.seq)
     assert [p.seq for p in records] == list(range(1, NEW_PHOTOS + 1))
     assert all(p.original and p.original in p.name for p in records)  # card name kept
@@ -718,3 +718,40 @@ def test_fr25_max_leaves_the_copier_a_core(make_pipeline: PipelineFactory) -> No
     busy = pipeline._apply_limits()[0]
     pipeline._copying = False
     assert pipeline._apply_limits()[0] == busy  # only MAX gives way
+
+
+def smugmug_event(store: Store, **changes: object) -> Profile:
+    event = store.create_event("Gala")
+    event.destination, event.album = "smugmug", "/api/v2/album/abc"
+    for key, value in changes.items():
+        setattr(event, key, value)
+    return store.update_event(event)
+
+
+def test_fr42_reprocess_at_full_size_after_smugmug_upload(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    from PIL import Image
+
+    event = smugmug_event(store, reprocess_full=True, limit_file_size=True, file_size_kb=20)
+    batch = make_pipeline(FakeUploader()).submit(card, event, "CARD_A", is_card=True)
+    recorder.wait_state(batch.id, "done")
+    root = store.event_root(event)
+    large = root / "SmugMug Large Processed"
+    recorder.wait(lambda: any("full size" in n.message for n in recorder.notices("info")))
+    assert len(list(large.iterdir())) == NEW_PHOTOS
+    for path in large.iterdir():
+        with Image.open(path) as out, Image.open(root / "Gala" / path.name) as src:
+            assert max(out.size) == max(src.size)  # full size, not the 20 K limit
+        assert path.stat().st_size > 20_000
+    assert all(p.large == "done" for p in photos(store, event).photos.values())
+
+
+def test_fr42_off_or_not_smugmug_makes_no_large_copies(
+    store: Store, card: Path, recorder: Recorder, make_pipeline: PipelineFactory
+) -> None:
+    event = flickr_event(store, reprocess_full=True)
+    batch = make_pipeline(FakeUploader()).submit(card, event, "CARD_A", is_card=True)
+    recorder.wait_state(batch.id, "done")
+    time.sleep(0.3)
+    assert not (store.event_root(event) / "SmugMug Large Processed").exists()

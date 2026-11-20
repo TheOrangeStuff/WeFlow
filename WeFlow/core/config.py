@@ -32,6 +32,14 @@ FILE_NAMING = (
     "filename_seq",
 )
 FILE_SIZE_KB_MIN, FILE_SIZE_KB_MAX = 10, 100_000
+LEGACY_ORIGINALS = "originals"  # events made before 1.16.0 keep their originals here
+LARGE_FOLDER = "SmugMug Large Processed"  # 1.16.0: full-size copies (FR-42)
+# Names an event's originals folder must not take: the other folders beside it.
+_TAKEN_FOLDERS = {".weflow", "processed", LARGE_FOLDER.casefold()}
+_UNSAFE_FOLDER = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
+_RESERVED_FOLDERS = {"CON", "PRN", "AUX", "NUL"} | {
+    f"{p}{n}" for p in ("COM", "LPT") for n in range(1, 10)
+}
 # The event settings an export preset holds.
 EXPORT_FIELDS = (
     "file_naming",
@@ -74,6 +82,17 @@ def default_library() -> Path:
 def slugify(name: str) -> str:
     slug = re.sub(r"[^A-Za-z0-9]+", "-", name).strip("-")
     return slug or "event"
+
+
+def originals_folder_name(name: str) -> str:
+    """The originals folder for an event called ``name`` (1.16.0): the name itself,
+    made safe on macOS and Windows. Spaces and capitals are kept."""
+    folder = re.sub(r"\s+", " ", _UNSAFE_FOLDER.sub("", name)).strip(". ")
+    if not folder:
+        return LEGACY_ORIGINALS
+    if folder.upper() in _RESERVED_FOLDERS or folder.casefold() in _TAKEN_FOLDERS:
+        folder = f"{folder} originals"
+    return folder
 
 
 def default_event_name(today: date | None = None) -> str:
@@ -134,11 +153,23 @@ class Profile:
     jpeg_quality: int = 92
     hold_uploads: bool = False
     keep_processed: bool = False  # 1.5.0: keep processed copies after upload
+    reprocess_full: bool = False  # 1.16.0: SmugMug: full-size copies after upload (FR-42)
+    originals_folder: str = ""  # 1.16.0: frozen at creation; "" = "originals" (older events)
     file_naming: str = "import"
     custom_name: str = ""  # empty: use the event name
     start_number: int = 1
     limit_file_size: bool = False
     file_size_kb: int = 500  # K = 1000 bytes
+
+    @property
+    def originals_dir(self) -> str:
+        """The originals folder's name inside the event folder."""
+        return self.originals_folder or LEGACY_ORIGINALS
+
+    @property
+    def makes_large(self) -> bool:
+        """FR-42: reprocess every uploaded photo at full size after its card is up."""
+        return self.reprocess_full and self.destination == "smugmug"
 
     def keyword_list(self) -> list[str]:
         return [k.strip() for k in self.keywords.split(",") if k.strip()]
@@ -359,6 +390,7 @@ class Store:
                 id=uuid.uuid4().hex,
                 name=self.unique_name(default_event_name(today)),
                 folder="",
+                originals_folder="",
             )
 
     def add_event(self, event: Profile, activate: bool = True) -> Profile:
@@ -368,6 +400,7 @@ class Store:
                 raise ValueError("event already exists")
             saved = replace(event, name=self.unique_name(event.name.strip()))
             saved.folder = self._unique_folder(slugify(saved.name))
+            saved.originals_folder = originals_folder_name(saved.name)
             self._events[saved.id] = saved
             if activate:
                 self.settings.active_event_id = saved.id
@@ -383,10 +416,10 @@ class Store:
         return self.add_event(draft, activate=activate)
 
     def update_event(self, event: Profile) -> Profile:
-        """Save edits. ``id`` and ``folder`` never change after creation."""
+        """Save edits. ``id`` and the folders never change after creation."""
         with self._lock:
             current = self._events[event.id]
-            saved = replace(event, folder=current.folder)
+            saved = replace(event, folder=current.folder, originals_folder=current.originals_folder)
             saved.name = self.unique_name(saved.name.strip(), exclude_id=event.id)
             self._events[event.id] = saved
         self.save_events()
@@ -395,7 +428,13 @@ class Store:
     def duplicate_event(self, event_id: str) -> Profile:
         with self._lock:
             source = self._events[event_id]
-            copy = replace(source, id=uuid.uuid4().hex, name=f"{source.name} copy", folder="")
+            copy = replace(
+                source,
+                id=uuid.uuid4().hex,
+                name=f"{source.name} copy",
+                folder="",
+                originals_folder="",
+            )
         return self.add_event(copy, activate=False)
 
     def delete_event(self, event_id: str) -> None:

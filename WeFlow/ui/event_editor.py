@@ -581,6 +581,13 @@ class EventEditor(QDialog):
             "Off: edited copies are deleted once uploaded. Your originals are always kept.",
         )
 
+        self.large = Toggle(event.reprocess_full)
+        self.large_row = toggle_row(
+            "Reprocess at 100%",
+            self.large,
+            'After upload, saves full-size copies with no size limit in "SmugMug Large Processed".',
+        )
+
         self.auto_wb = Toggle(event.auto_wb)
         self.wb_strength = SliderRow("Strength", 0, 100, round(event.wb_strength * 100))
         self.auto_tone = Toggle(event.auto_tone)
@@ -645,6 +652,7 @@ class EventEditor(QDialog):
         left.addWidget(self.privacy_field)
         left.addWidget(self.hold_row)
         left.addWidget(self.keep_row)
+        left.addWidget(self.large_row)
         left.addWidget(separator())
         left.addWidget(label("Look", "heading"))
         left.addWidget(toggle_row("Auto white balance", self.auto_wb))
@@ -836,6 +844,7 @@ class EventEditor(QDialog):
             flickr_privacy=self.privacy.currentData(),
             hold_uploads=self.hold.isChecked(),
             keep_processed=self.keep.isChecked(),
+            reprocess_full=self.large.isChecked(),
             auto_wb=self.auto_wb.isChecked(),
             wb_strength=self.wb_strength.value() / 100,
             auto_tone=self.auto_tone.isChecked(),
@@ -868,6 +877,7 @@ class EventEditor(QDialog):
         for widget in (self.album_field, self.hold_row, self.keep_row):
             widget.setVisible(uploads)
         self.privacy_field.setVisible(event.destination == "flickr")
+        self.large_row.setVisible(event.destination == "smugmug")
         self.wb_strength.setEnabled(event.auto_wb)
         self.watermark_box.setVisible(event.watermark)
         self.watermark_name.setText(

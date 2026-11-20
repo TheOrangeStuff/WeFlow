@@ -100,6 +100,8 @@ Fields carry over from v0.1 `Profile`, with these changes:
 | `jpeg_quality` | int 0–100 | 92 | Lightroom's range (1.2.0; was 60–100) |
 | `hold_uploads` | bool | false | |
 | `keep_processed` | bool | false | *(1.5.0)* Keep processed copies after upload (FR-40) |
+| `reprocess_full` | bool | false | *(1.16.0)* "Reprocess at 100%": SmugMug only (FR-42) |
+| `originals_folder` | str | event name made safe, at creation | *(1.16.0)* Frozen at creation; `""` = `originals` (events made before 1.16.0) |
 | `file_naming` | `"import" \| "custom_seq" \| "custom" \| "custom_filename" \| "date_filename" \| "filename" \| "filename_seq"` | `"import"` | FR-26 (1.2.0) |
 | `custom_name` | str | `""` | Empty = event name |
 | `start_number` | int ≥ 0 | 1 | First sequence number |
@@ -113,6 +115,7 @@ In Paced mode (FR-38) a batch goes `copying → ready` and waits there; `ready` 
 ### 4.3 Photo record (persisted per event in `.WeFlow/state.json`)
 `name, sha256, captured, batch_id, status (copied|processed|uploaded|failed), failed_stage, remote_id, held, attempts, error`.
 From 1.2.0 also `original` (card file name, no extension), `seq` (1-based import order in the event) and `output` (processed file name; empty = `name`).
+From 1.16.0 also `large` (`""`, `done` or `failed`): the full-size copy of FR-42.
 
 ### 4.4 Persistence
 - Settings and events: `<app-data>/settings.json`, `<app-data>/events.json` (atomic writes).
@@ -121,7 +124,8 @@ From 1.2.0 also `original` (card file name, no extension), `seq` (1-based import
 - On first launch, migrate any v0.1 secrets found in `settings.json` into keyring, then blank them out.
 - Library on disk:
   ```
-  <Library>/<event.folder>/originals/
+  <Library>/<event.folder>/<event.originals_folder>/   # 1.16.0: the event's name; `originals/` before
+  <Library>/<event.folder>/SmugMug Large Processed/    # 1.16.0: full-size copies (FR-42)
   <Library>/<event.folder>/processed/           # local-only events, kept copies (FR-40)
   <Library>/<event.folder>/.WeFlow/state.json
   <Library>/<event.folder>/.WeFlow/work/        # 1.5.0: processed copies waiting to upload
@@ -218,6 +222,13 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
   - Held, waiting and failed photos keep their processed copy until they are up. If it goes missing before upload, it is made again from the original.
   - Local-only events (destination none) still write straight to `processed/`.
   - Files already in `processed/` from earlier versions are never deleted.
+
+- **FR-42** *(1.16.0)* **Reprocess at 100%** (`reprocess_full`, off by default, shown only for SmugMug events).
+  - Once nothing in a batch is left to upload, every uploaded photo of the batch is processed again from its original: same look and watermark, full size, no file size limit, JPEG quality 100. The copies go to `<event folder>/SmugMug Large Processed/` under the processed name (FR-26). They are not uploaded.
+  - Full-size work waits behind any photo still to be processed, so a new card is never slowed by it.
+  - One notice per batch when its copies are made. A failed copy is tried again by Retry or at the next launch.
+  - Turning the switch on for an event that already has photos up makes their copies too.
+- **FR-43** *(1.16.0)* A new event's originals folder is named after the event (made safe on macOS and Windows), not `originals`. It is fixed at creation like `folder`; renaming the event never moves it. Events made earlier keep `originals/`.
 
 ### 5.5 Pipeline mode *(1.3.0)*
 - **FR-38** An app-wide **Auto / Paced** switch (`Settings.paced`, default Auto).

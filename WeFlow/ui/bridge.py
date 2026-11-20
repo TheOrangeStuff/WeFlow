@@ -241,10 +241,14 @@ class Bridge(QObject):
 
     def save_event(self, event: Profile) -> Profile:
         """Add the event if it is new (and make it active), else save the edits."""
-        if self.store.get(event.id) is None:
+        before = self.store.get(event.id)
+        if before is None:
             saved = self.store.add_event(event, activate=True)
         else:
             saved = self.store.update_event(event)
+            if saved.makes_large and not before.makes_large:
+                # FR-42: just turned on, so make full-size copies of photos already up.
+                self._queue(lambda: self.pipeline.make_large(saved.id))
         self.events_changed.emit()
         return saved
 
@@ -329,7 +333,7 @@ class Bridge(QObject):
             return str(self.store.library)
         # Uploaded copies are deleted unless the event keeps them (1.5.0).
         keeps = event.destination == "none" or event.keep_processed
-        folder = "processed" if processed and keeps else "originals"
+        folder = "processed" if processed and keeps else event.originals_dir
         return str(self.store.event_root(event) / folder)
 
     def open_folder(self, path: str) -> None:
@@ -686,7 +690,7 @@ class Bridge(QObject):
 
         def job() -> QImage | None:
             newest: tuple[float, Path] | None = None
-            for folder in (root / "processed", root / "originals"):
+            for folder in (root / "processed", root / event.originals_dir):
                 if not folder.is_dir():
                     continue
                 for path in folder.rglob("*"):

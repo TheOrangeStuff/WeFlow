@@ -586,3 +586,20 @@ machine (2 cores / 4 threads) with 24 MP, 12 MB JPEGs; three things held it back
   by then goes from `copying` to `done` without a `safe` update; the "safe to remove"
   notice, the panel and auto-eject go by `verified`, so they behave the same.
 - **The card countdown is 15 s** (was 5 s; the owner asked). FR-11 updated.
+
+## 1.16.0 — Reprocess at 100%; originals named after the event
+
+- **"100%" means the original's full size**, as the owner put it: no resize, no file size
+  limit, and JPEG quality 100 so nothing more is lost. Look and watermark match the small
+  copy, so the large set is the same photo for print or download.
+- **Per batch, after its uploads** (FR-42), as asked. Photos held for review are left out
+  until they are up, then their batch is checked again. The large copies are not tracked
+  in the batch's state: the batch is `done` when the uploads are, and a notice says when
+  the large copies are made. Quitting mid-way is safe; the next launch finishes them.
+- **Full-size work shares the processing workers, behind photos still to be processed**
+  (a priority queue), so a second card's small copies are never kept waiting.
+- **The originals folder takes the event's name only for events made from 1.16.0** and is
+  frozen like `folder`. Moving older events' `originals/` folders was ruled out: it would
+  touch every library and break any outside links to them. Names that clash with the
+  folders beside it (`processed`, `SmugMug Large Processed`) or Windows reserved names get
+  " originals" added.

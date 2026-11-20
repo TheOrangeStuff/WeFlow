@@ -3,7 +3,8 @@
 Threads: one copier, processing and upload workers (the speed level sets how many
 run at once; at MAX they start on each photo while the card is still copying) and a
 flusher that recounts changed batches and emits ``BatchUpdated``
-at most 10 times a second.
+at most 10 times a second. Processing workers also make the full-size SmugMug copies
+of FR-42, after any photo still waiting to be processed.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from . import imaging, ingest, naming
-from .config import Profile, Store
+from .config import LARGE_FOLDER, Profile, Store
 from .events import BatchUpdated, Emit, Event, Notice
 from .state import Batch, EventState, PhotoRecord
 from .uploaders import Uploader, UploadError, make_uploader, service_name
@@ -41,6 +42,9 @@ ACTIVE_STATES = ("copying", "safe", "processing", "uploading")
 INTERRUPTED = "The copy was interrupted. Re-insert the card to try again."
 
 Task = tuple[str, str]  # (event id, photo name)
+# Processing queue items: (priority, order, stage, event id, photo name). Stage "process"
+# goes before "large" (FR-42); a negative priority tells a worker to stop.
+Job = tuple[int, int, str, str, str]
 
 
 def retry_delay(attempts: int) -> float:
@@ -237,6 +241,8 @@ class Pipeline:
         self._batches: dict[int, Batch] = {}
         self._uploaders: dict[str, Uploader] = {}
         self._sorted: dict[int, int] = {}  # batch id -> photos up at its last sort
+        self._large_told: dict[int, tuple[int, int]] = {}  # batch id -> (done, failed) said
+        self._order = itertools.count()
         self._queued: set[tuple[str, str, str]] = set()
         self._dirty: set[int] = set()
         self._waiting: dict[int, str] = {}
@@ -247,7 +253,7 @@ class Pipeline:
         self._stopping = threading.Event()
         self._budget = PixelBudget()
         self._copy_q: queue.Queue[int | None] = queue.Queue()
-        self._process_q: queue.Queue[Task | None] = queue.Queue()
+        self._process_q: queue.PriorityQueue[Job] = queue.PriorityQueue()
         self._upload_q = _DelayQueue()
         self._threads: list[threading.Thread] = []
         # Threads for the fastest level start once; Slots decide how many may run.
@@ -365,6 +371,11 @@ class Pipeline:
         retried = 0
         for eid, state in self._event_states(event_id):
             for photo in list(state.photos.values()):
+                if photo.large == "failed":  # FR-42: the full-size copy only
+                    photo.large = ""
+                    state.put_photo(photo)
+                    self._enqueue("large", eid, photo.name)
+                    retried += 1
                 if photo.status != "failed":
                     continue
                 stage = photo.failed_stage
@@ -388,7 +399,7 @@ class Pipeline:
             if not (root / ".WeFlow").is_dir():
                 continue
             state = self._state_for(event)
-            for folder in (state.originals, state.processed, state.work):
+            for folder in (state.originals, state.processed, state.work, state.large):
                 for leftover in folder.glob(".tmp-*"):
                     with contextlib.suppress(OSError):
                         leftover.unlink()
@@ -403,6 +414,9 @@ class Pipeline:
                         state.put_batch(batch)
             for photo in list(state.photos.values()):
                 owner = state.batches.get(photo.batch_id)
+                if photo.large == "failed":  # FR-42: try the full-size copy again
+                    photo.large = ""
+                    state.put_photo(photo)
                 if photo.status == "copied" and not photo.held:
                     self._enqueue("process", event.id, photo.name)
                 elif photo.status == "processed" and not photo.held:
@@ -411,6 +425,19 @@ class Pipeline:
             for batch in list(state.batches.values()):
                 if batch.state != "done":
                     self._touch(batch.id)
+                self._queue_large(event, state, batch)
+
+    def make_large(self, event_id: str) -> int:
+        """FR-42: queue full-size copies of the event's photos that are already up and
+        have none (the switch was just turned on). Returns how many were queued."""
+        event = self._store.get(event_id)
+        if event is None:
+            return 0
+        queued = 0
+        for _eid, state in self._event_states(event_id):
+            for batch in list(state.batches.values()):
+                queued += self._queue_large(event, state, batch)
+        return queued
 
     def snapshot(self) -> list[Batch]:
         with self._lock:
@@ -434,7 +461,7 @@ class Pipeline:
         self._process_slots.close()
         self._upload_slots.close()
         for _ in self._threads:
-            self._process_q.put(None)
+            self._process_q.put((-1, next(self._order), "", "", ""))
         self._upload_q.close()
         deadline = time.monotonic() + timeout
         for thread in self._threads:
@@ -458,7 +485,7 @@ class Pipeline:
             if state is None or state.root != root:
                 if state is not None:
                     state.close()
-                state = EventState(root)
+                state = EventState(root, event.originals_dir)
                 self._states[event.id] = state
             return state
 
@@ -472,8 +499,9 @@ class Pipeline:
             if key in self._queued or self._stopping.is_set():
                 return
             self._queued.add(key)
-        if stage == "process":
-            self._process_q.put((event_id, name))
+        if stage in ("process", "large"):
+            priority = 1 if stage == "large" else 0
+            self._process_q.put((priority, next(self._order), stage, event_id, name))
         else:
             self._upload_q.put((event_id, name))
 
@@ -680,15 +708,19 @@ class Pipeline:
     def _process_loop(self) -> None:
         while self._process_slots.acquire():
             try:
-                task = self._process_q.get()
-                if task is None or self._stopping.is_set():
+                priority, _, stage, event_id, name = self._process_q.get()
+                if priority < 0 or self._stopping.is_set():
                     return
+                task = (event_id, name)
                 try:
-                    self._process_one(task)
+                    if stage == "large":
+                        self._large_one(task)
+                    else:
+                        self._process_one(task)
                 except Exception:
-                    log.exception("process worker failed on %s", task[1])
+                    log.exception("process worker failed on %s", name)
                 finally:
-                    self._dequeued("process", task)
+                    self._dequeued(stage, task)
             finally:
                 self._process_slots.release()
 
@@ -776,6 +808,7 @@ class Pipeline:
         if photo.status == "uploaded" and batch.destination != "none":
             # The copier's nudge: everything may have gone up before the copy ended.
             self._sort_when_settled(self._uploader(batch.destination), event, state, batch)
+            self._queue_large(event, state, batch)
             return None
         if photo.status != "processed" or photo.held:
             return None
@@ -834,6 +867,7 @@ class Pipeline:
             self._waiting.pop(batch.id, None)
         self._touch(batch.id)
         self._sort_when_settled(uploader, event, state, batch)
+        self._queue_large(event, state, batch)
         return None
 
     def _sort_when_settled(
@@ -861,6 +895,77 @@ class Pipeline:
                     "info",
                     f"{batch.label}: photos are up, but the album could not be sorted. "
                     "It will be sorted after the next card.",
+                    batch.id,
+                )
+            )
+
+    # ------------------------------------------------------ full size (FR-42)
+    def _queue_large(self, event: Profile, state: EventState, batch: Batch) -> int:
+        """Once nothing in the batch is left to upload, queue a full-size copy of each
+        photo that is up. Returns how many were queued."""
+        if not event.makes_large or batch.destination != "smugmug" or batch.state == "copying":
+            return 0
+        photos = state.batch_photos(batch.id)
+        if any(p.status in ("copied", "processed") and not p.held for p in photos):
+            return 0
+        queued = 0
+        for photo in photos:
+            if photo.status == "uploaded" and not photo.large:
+                self._enqueue("large", event.id, photo.name)
+                queued += 1
+        return queued
+
+    def _large_one(self, task: Task) -> None:
+        """Process the original again at full size and without a size limit."""
+        found = self._lookup(task)
+        if found is None:
+            return
+        event, state, photo, batch = found
+        if photo.status != "uploaded" or photo.large or not event.makes_large:
+            return
+        full = replace(event, max_long_edge=0, limit_file_size=False, jpeg_quality=100)
+        try:
+            imaging.process_file(
+                state.originals / photo.name,
+                state.large / photo.processed_name,
+                full,
+                self._budget.reserve,
+            )
+        except Exception as exc:
+            if not isinstance(exc, imaging.ProcessError):
+                log.exception("full-size copy of %s failed unexpectedly", photo.name)
+            log.warning("full-size copy of %s failed", photo.name)
+            photo.large = "failed"
+        else:
+            photo.large = "done"
+        state.put_photo(photo)
+        self._large_finished(state, batch)
+
+    def _large_finished(self, state: EventState, batch: Batch) -> None:
+        """Say once when every full-size copy of the batch is made (or has failed)."""
+        photos = [p for p in state.batch_photos(batch.id) if p.status == "uploaded"]
+        if any(not p.large for p in photos):
+            return
+        done = sum(p.large == "done" for p in photos)
+        failed = sum(p.large == "failed" for p in photos)
+        with self._lock:  # two workers can finish together: say it once
+            if self._large_told.get(batch.id) == (done, failed):
+                return
+            self._large_told[batch.id] = (done, failed)
+        if failed:
+            self._emit(
+                Notice(
+                    "error",
+                    f"{batch.label}: {plural(failed)} could not be saved at full size. "
+                    "WeFlow tries again next time it starts.",
+                    batch.id,
+                )
+            )
+        elif done:
+            self._emit(
+                Notice(
+                    "info",
+                    f"{batch.label}: {plural(done)} saved at full size in {LARGE_FOLDER}.",
                     batch.id,
                 )
             )
