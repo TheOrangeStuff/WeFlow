@@ -667,3 +667,21 @@ machine (2 cores / 4 threads) with 24 MP, 12 MB JPEGs; three things held it back
   Dropbox fail at once with a plain message; their photos stay on disk.
 - **The stored Dropbox keys are left in the keychain entry, unused**, rather than rewriting
   the entry (each rewrite can cost an unsigned macOS build a keychain prompt).
+
+## 1.20.0 — Erase card (FR-47)
+
+- **The owner asked for a way to clear the card before ejecting it**, which goes against
+  FR-17 (never change a card). FR-17 now has one exception, FR-47, which runs only
+  when the user asks for it.
+- **Delete the copied files, don't format.** A computer format can leave a card in a
+  state the camera doesn't like, and formatting would also wipe RAW files and videos
+  WeFlow never copied. Formatting is still best done in the camera.
+- **A button, not a setting.** An "always erase" setting could wipe a card nobody
+  meant to wipe (a second shooter's card, one inserted into the wrong event). It needs
+  two clicks, the same as deleting an event.
+- **Every file is checked again first**: the card file is hashed again, and the copy on
+  this computer is hashed again, and the two have to match. That takes about as long as
+  reading the card once more. Any photo in the event counts, so photos skipped as
+  "already imported" are erased too.
+- **With "Eject the card when it's copied" on**, the card is gone before the button can
+  be used. That is fine: someone who wants to erase cards can turn auto-eject off.

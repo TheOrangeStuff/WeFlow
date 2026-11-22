@@ -29,8 +29,8 @@ HEADLINES = {
 }
 BUTTONS = {
     "paused": ["Resume"],
-    "safe": ["Eject"],
-    "ready": ["Process", "Eject"],
+    "safe": ["Eject", "Erase card"],
+    "ready": ["Process", "Eject", "Erase card"],
     "held": ["Upload", "Open folder"],
     "attention": ["Retry", "Details"],
     "copy-error": ["Retry"],

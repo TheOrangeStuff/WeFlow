@@ -23,7 +23,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
 
-from . import imaging, ingest, naming
+from . import erase, imaging, ingest, naming
 from .config import LARGE_FOLDER, Profile, Store
 from .events import BatchUpdated, Emit, Event, Notice
 from .state import Batch, EventState, PhotoRecord
@@ -419,6 +419,25 @@ class Pipeline:
         self._emit(BatchUpdated(replace(batch)))
         self._copy_q.put(batch.id)
         return replace(batch)
+
+    def erase_card(self, batch_id: int) -> erase.Erased:
+        """Erase the card's photos that this event holds verified copies of (FR-47).
+
+        Only for a card batch whose copy finished and verified, and only while no
+        other batch is copying from that card. Runs on the caller's thread."""
+        with self._lock:
+            batch = self._batches.get(batch_id)
+            state = self._states.get(batch.event_id) if batch else None
+            busy = batch is not None and any(
+                b.source == batch.source and b.state == "copying" for b in self._batches.values()
+            )
+        if batch is None or state is None or not (batch.is_card and batch.verified) or busy:
+            return erase.Erased(False, message="Wait until the card is safe to remove.")
+        with state.lock:
+            copies = {p.sha256: state.originals / p.name for p in state.photos.values()}
+        result = erase.erase_copied(Path(batch.source), copies)
+        log.info("batch %s erase: %s", batch.id, result)
+        return result
 
     @property
     def paced(self) -> bool:

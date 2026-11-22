@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from PySide6.QtCore import QPropertyAnimation, QRectF, Qt, Signal
+from PySide6.QtCore import QPropertyAnimation, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPaintEvent, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
@@ -227,6 +227,7 @@ class StatusPanel(QFrame):
     """Shows one ``PanelView``. Buttons appear only in the states they apply to."""
 
     eject_clicked = Signal()
+    erase_clicked = Signal()  # second click of "Erase card" → "Really erase?"
     release_clicked = Signal()
     process_clicked = Signal()
     retry_clicked = Signal()
@@ -240,6 +241,7 @@ class StatusPanel(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumHeight(280)
         self.view = PanelView()
+        self._erase_batch: int | None = None
         self._fade: QLabel | None = None
         self._fade_anim: QPropertyAnimation | None = None
 
@@ -250,6 +252,12 @@ class StatusPanel(QFrame):
         self.stages = StageStrip()
 
         self.eject = Button("Eject", "good", icon="eject", icon_token="good-strong", size="large")
+        self.erase = Button(
+            "Erase card", "quiet", icon="trash-2", icon_token="text-2", size="large"
+        )
+        self._erase_armed = QTimer(self)
+        self._erase_armed.setSingleShot(True)
+        self._erase_armed.timeout.connect(self._disarm_erase)
         self.open_folder = Button("Open folder", "outline", size="large")
         self.release = Button(
             "Upload", "primary", icon="cloud-upload", icon_token="on-accent", size="large"
@@ -262,6 +270,7 @@ class StatusPanel(QFrame):
         )
         for button, tip in (
             (self.eject, "Eject the card so you can take it out."),
+            (self.erase, "Delete the copied photos from the card. Other files stay."),
             (self.open_folder, "Show this event's photos on your computer."),
             (self.release, "Send the waiting photos now."),
             (self.process, "Auto-tune the copied photos now."),
@@ -271,6 +280,7 @@ class StatusPanel(QFrame):
         ):
             button.setToolTip(tip)
         self.eject.clicked.connect(self.eject_clicked)
+        self.erase.clicked.connect(self._erase)
         self.open_folder.clicked.connect(self.open_folder_clicked)
         self.release.clicked.connect(self.release_clicked)
         self.process.clicked.connect(self.process_clicked)
@@ -279,8 +289,8 @@ class StatusPanel(QFrame):
         self.resume.clicked.connect(self.resume_clicked)
         self._buttons = {
             "paused": (self.resume,),
-            "safe": (self.eject,),
-            "ready": (self.process, self.eject),
+            "safe": (self.eject, self.erase),
+            "ready": (self.process, self.eject, self.erase),
             "held": (self.release, self.open_folder),
             "attention": (self.retry, self.details),
             "copy_error": (self.retry,),
@@ -293,6 +303,7 @@ class StatusPanel(QFrame):
         self._all_buttons = (
             self.process,
             self.eject,
+            self.erase,
             self.release,
             self.retry,
             self.resume,
@@ -361,6 +372,9 @@ class StatusPanel(QFrame):
         shown = self._buttons.get(view.state, ())
         if view.state == "ready" and not view.card:
             shown = (self.process,)
+        if view.batch_id != self._erase_batch:
+            self._disarm_erase()
+            self._erase_batch = view.batch_id
         for button in self._all_buttons:
             button.setVisible(button in shown)
         self._button_box.setVisible(bool(shown))
@@ -376,6 +390,26 @@ class StatusPanel(QFrame):
     def set_ejecting(self, busy: bool) -> None:
         self.eject.setEnabled(not busy)
         self.eject.setText("Ejecting…" if busy else "Eject")
+        self.erase.setEnabled(not busy)
+
+    def _erase(self) -> None:
+        if not self._erase_armed.isActive():
+            self.erase.setText("Really erase?")
+            self._erase_armed.start(4000)
+            return
+        self._erase_armed.stop()
+        self.erase_clicked.emit()
+
+    def _disarm_erase(self) -> None:
+        self._erase_armed.stop()
+        if self.erase.isEnabled():
+            self.erase.setText("Erase card")
+
+    def set_erasing(self, busy: bool) -> None:
+        self._erase_armed.stop()
+        self.erase.setEnabled(not busy)
+        self.erase.setText("Erasing…" if busy else "Erase card")
+        self.eject.setEnabled(not busy)
 
     def _crossfade(self) -> None:
         """Fade the old look out over the new one (200 ms)."""

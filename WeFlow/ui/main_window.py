@@ -82,6 +82,7 @@ class MainWindow(QMainWindow):
         self._ejected: set[int] = set()  # batches whose card WeFlow ejected
         self._auto_ejecting: set[int] = set()  # batches auto-eject has been tried for
         self._ejecting: dict[str, int] = {}  # card path -> batch, while an eject runs
+        self._erasing: dict[int, str] = {}  # batch -> card path, while an erase runs
         self._photo_key: tuple[object, ...] = ()  # what the hero photo was last loaded for
 
         page = QWidget()
@@ -135,6 +136,7 @@ class MainWindow(QMainWindow):
         # 3. Status panel
         self.panel = StatusPanel()
         self.panel.eject_clicked.connect(self._eject)
+        self.panel.erase_clicked.connect(self._erase)
         self.panel.release_clicked.connect(self._release)
         self.panel.process_clicked.connect(self._process)
         self.panel.retry_clicked.connect(self._retry)
@@ -202,6 +204,7 @@ class MainWindow(QMainWindow):
         bridge.events_changed.connect(self._on_events_changed)
         bridge.settings_changed.connect(self.refresh)
         bridge.eject_finished.connect(self._on_eject_finished)
+        bridge.erase_finished.connect(self._on_erase_finished)
         bridge.update_changed.connect(self.refresh)
         bridge.update_install_changed.connect(self._on_update_install)
         bridge.quit_for_update.connect(self.quit_requested)
@@ -500,11 +503,29 @@ class MainWindow(QMainWindow):
             self._start_eject(self._shown_batch)
 
     def _start_eject(self, batch: Batch) -> None:
-        if batch.source in self._ejecting:
+        if batch.source in self._ejecting or batch.source in self._erasing.values():
             return
         self._ejecting[batch.source] = batch.id
         self.panel.set_ejecting(True)
         self.bridge.eject(batch.source)
+
+    def _erase(self) -> None:
+        """Erase the shown card's copied photos (FR-47): asked twice by the panel."""
+        batch = self._shown_batch
+        if batch is None or not (batch.is_card and batch.verified):
+            return
+        if batch.source in self._ejecting or batch.id in self._erasing:
+            return
+        self._erasing[batch.id] = batch.source
+        self.panel.set_erasing(True)
+        self.bridge.erase_card(batch.id)
+
+    def _on_erase_finished(self, batch_id: int, ok: bool, message: str) -> None:
+        self._erasing.pop(batch_id, None)
+        self.panel.set_erasing(False)
+        self.notice_bar.show_message("safe" if ok else "error", message)
+        self.drawer.add("info" if ok else "error", message)
+        self.refresh()
 
     def _release(self) -> None:
         if self._shown_batch is not None:

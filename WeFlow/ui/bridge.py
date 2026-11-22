@@ -106,6 +106,7 @@ class Bridge(QObject):
     settings_changed = Signal()
     services_changed = Signal()
     eject_finished = Signal(str, bool, str)  # path, ok, message
+    erase_finished = Signal(object, bool, str)  # batch id (too big for a Qt int), ok, message
     preview_ready = Signal(int, object, object, str)  # token, before, after, error
     update_changed = Signal()
     # In-app update (FR-44): (state, percent); state is downloading, waiting, installing or failed
@@ -321,6 +322,16 @@ class Bridge(QObject):
             self.eject_finished.emit(path, ok, message)
 
         self.run(lambda: cards.eject(Path(path)), done)
+
+    def erase_card(self, batch_id: int) -> None:
+        """Erase the card's verified-copied photos (FR-47), off the UI thread."""
+
+        def done(result: Any) -> None:
+            ok = bool(getattr(result, "ok", False))
+            message = getattr(result, "message", "") or "The card could not be erased."
+            self.erase_finished.emit(batch_id, ok, message)
+
+        self.run(lambda: self.pipeline.erase_card(batch_id), done)
 
     def set_paused(self, paused: bool) -> None:
         self.watcher.set_paused(paused)

@@ -158,7 +158,10 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
 - **FR-16** The Eject action calls `diskutil eject` on macOS and the Shell.Application Eject verb on Windows.
   - Report success or failure in the UI.
   - *(1.10.0)* Settings › "Eject the card when it's copied" (`Settings.auto_eject`, default off) ejects the card by itself once the batch is verified (never earlier, and only once per batch). If the eject fails, the UI says the card is safe to remove and asks the user to eject it.
-- **FR-17** **Never** open card files for writing. Never rename, move or delete anything on a card. Enforce with a test that runs ingest against a read-only fixture.
+- **FR-17** **Never** open card files for writing. Never rename, move or delete anything on a card. Enforce with a test that runs ingest against a read-only fixture. The one exception is **FR-47**, and only when the user asks for it.
+- **FR-47** *(1.20.0)* **Erase card**: while a card shows "Safe to remove", the panel offers "Erase card". It needs two clicks ("Erase card" → "Really erase?", disarmed after 4 s) and is never automatic.
+  - It deletes only JPEGs that ingest would import whose checksum, read again from the card, matches a photo in the batch's event, and whose copy on this computer still has that checksum. Other files (RAW, video, dotfiles) and all folders stay. Nothing is formatted.
+  - Never for a folder import, an unverified batch, or while that card is copying or ejecting. A locked card says so.
 - **FR-18** "Import folder…" runs the same pipeline on any folder.
 
 ### 5.3 Processing

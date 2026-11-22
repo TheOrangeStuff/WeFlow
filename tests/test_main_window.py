@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt
 
 from tests.fixtures.make_card import make_card
 from tests.ui_states import batch
+from WeFlow.core import ingest
 from WeFlow.core.config import Profile, Store
 from WeFlow.core.uploaders import FakeUploader
 from WeFlow.ui.tray import STATES, Throttle, Tray, tray_icon
@@ -54,7 +55,7 @@ def test_m4_fake_card_inserted_safe_then_done(  # type: ignore[no-untyped-def]
     qtbot.waitUntil(lambda: window.panel.state == "safe", timeout=10000)
     assert window.panel.headline.text() == "Safe to remove"
     assert window.panel.subline.text() == "CARD_A · 7 photos copied and verified"
-    assert window.panel.visible_buttons() == ["Eject"]
+    assert window.panel.visible_buttons() == ["Eject", "Erase card"]
     assert window.panel.stages.states()[0] == "done"
 
     # Processing and upload carry on behind the Safe panel.
@@ -380,3 +381,21 @@ def test_fr25_speed_in_top_bar_saves_and_applies(qtbot, window, bridge, store, m
     assert slider.pos() == before and slider._pos == 2.0
     qtbot.keyClick(slider, Qt.Key.Key_Home)
     assert store.settings.speed == "low"
+
+
+def test_fr47_erase_card_needs_two_clicks(  # type: ignore[no-untyped-def]
+    qtbot, window, bridge, tmp_path
+) -> None:
+    bridge.start()
+    card = insert_card(tmp_path)
+    qtbot.waitUntil(lambda: window.notice_bar.isVisible(), timeout=3000)
+    window.notice_bar.start_now()
+    qtbot.waitUntil(lambda: window.panel.state == "safe", timeout=10000)
+
+    window.panel.erase.click()
+    assert window.panel.erase.text() == "Really erase?"
+    assert ingest.list_jpegs(card)  # one click never erases
+    window.panel.erase.click()
+    qtbot.waitUntil(lambda: window.panel.erase.text() == "Erase card", timeout=10000)
+    assert ingest.list_jpegs(card) == []
+    assert window.notice_bar.text.text() == "Erased 8 photos from the card."

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.20.0 — 2026-11-22
+
+- New: **Erase card**. Once a card says "Safe to remove", click Erase card, then
+  Really erase?, to delete the photos WeFlow copied from it.
+- Only photos with a checked copy on this computer are erased. RAW files, videos and
+  anything not copied stay on the card, and the card is not formatted.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.19.2 — 2026-11-20
 
 - Dropbox uploads are removed. Events that used Dropbox now keep their photos on this

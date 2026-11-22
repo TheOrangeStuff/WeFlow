@@ -6,7 +6,7 @@ WeFlow is a desktop app (macOS + Windows) that copies JPEGs from a camera card, 
 
 ## Non-negotiable rules
 
-- **Never write to, rename or delete anything on a memory card**, in code or in tests. Ingest opens card files read-only.
+- **Never write to, rename or delete anything on a memory card**, in code or in tests. Ingest opens card files read-only. The only exception is the user-requested "Erase card" (FR-47, `WeFlow/core/erase.py`); nothing else may touch a card.
 - **Never show "safe to remove"** until every file is copied and its checksum verified.
 - **Never upload a photo twice.** Upload and add-to-album are separate steps, and a stored `remote_id` means the photo is already up.
 - `WeFlow/core` never imports Qt. The UI reaches core only through `WeFlow/ui/bridge.py`.
