@@ -64,6 +64,7 @@ class Batch:
     label: str = ""
     source: str = ""
     is_card: bool = False
+    live: bool = False  # 1.21.0: photos the camera sent to the watched folder (FR-48)
     destination: str = "none"  # the event's destination when the batch started
     state: str = "copying"
     verified: bool = False  # every file copied and checksum-verified

@@ -373,6 +373,7 @@ class Pipeline:
         self._stopping = threading.Event()
         self._budget = PixelBudget()
         self._copy_q: queue.Queue[int | None] = queue.Queue()
+        self._files: dict[int, list[Path]] = {}  # FR-48: a batch of just these photos
         self._process_q: queue.PriorityQueue[Job] = queue.PriorityQueue()
         self._upload_q = _DelayQueue()
         self._threads: list[threading.Thread] = []
@@ -399,8 +400,18 @@ class Pipeline:
         self._threads.append(thread)
 
     # ------------------------------------------------------------ public API
-    def submit(self, source: Path, event: Profile, label: str, is_card: bool) -> Batch:
-        """Start importing ``source`` into ``event``. Returns at once."""
+    def submit(
+        self,
+        source: Path,
+        event: Profile,
+        label: str,
+        is_card: bool,
+        files: list[Path] | None = None,
+    ) -> Batch:
+        """Start importing ``source`` into ``event``. Returns at once.
+
+        ``files`` limits the batch to those photos: the watched folder's newest
+        arrivals (FR-48). They are kept in memory only; a retry imports the folder."""
         state = self._state_for(event)
         with self._lock:
             self._last_id = max(self._last_id + 1, int(time.time() * 1000))
@@ -411,10 +422,13 @@ class Pipeline:
                 label=label,
                 source=str(source),
                 is_card=is_card,
+                live=files is not None,
                 destination=event.destination,
                 started=time.time(),
             )
             self._batches[batch.id] = batch
+            if files is not None:
+                self._files[batch.id] = list(files)
         state.put_batch(batch)
         self._emit(BatchUpdated(replace(batch)))
         self._copy_q.put(batch.id)
@@ -783,7 +797,11 @@ class Pipeline:
             source = Path(batch.source)
             if not source.is_dir():
                 raise ingest.CopyError("The card was removed or could not be read.")
-            files = ingest.list_jpegs(source)
+            with self._lock:
+                listed = self._files.pop(batch.id, None)
+            files = (
+                ingest.list_jpegs(source) if listed is None else [p for p in listed if p.is_file()]
+            )
             batch.total = len(files)
             batch.bytes_total = sum(_size(p) for p in files)
             self._touch(batch.id, now=True)

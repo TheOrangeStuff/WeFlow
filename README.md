@@ -88,6 +88,21 @@ Choose a sample photo to see a live before/after preview; drag the line to compa
 
 Deleting an event in WeFlow never deletes its photos.
 
+## Photos from the camera over Wi-Fi
+
+WeFlow can import photos while you shoot, as the camera sends them to this computer.
+
+1. Set up the camera to send photos to a folder on this computer, with Canon Image
+   Transfer Utility 2 (auto transfer) or the camera's FTP transfer to an FTP server here.
+2. In WeFlow, open **Settings › Photos from the camera over Wi-Fi** and choose that folder.
+
+Each photo is copied, checked, processed and uploaded a few seconds after it lands. If
+you walk out of Wi-Fi range, WeFlow picks the photos up whenever they arrive. Whether
+the camera resends what it missed depends on Canon's tool: Image Transfer Utility sends
+unsent photos when the camera reconnects, while FTP transfer may need "transfer unsent
+images" in the camera menu. You can also insert the card afterwards: WeFlow copies only
+the photos it doesn't have yet. **Pause** stops this too.
+
 ## Settings
 
 - **Library folder.**
@@ -95,6 +110,8 @@ Deleting an event in WeFlow never deletes its photos.
   WeFlow in your browser, and paste the code it shows. The key and sign-in details are kept
   in the macOS Keychain or Windows Credential Manager, never in plain files, and they stay
   there when you install a newer WeFlow.
+- **Photos from the camera over Wi-Fi:** the folder WeFlow watches (see above). **Stop**
+  turns it off.
 - **Card-detected sound** and **Start at login**.
 - **Check for new versions:** when a newer WeFlow is out, a bar offers **Download**, which
   opens the download page. **Skip** hides that version; Settings still links to it.

@@ -261,6 +261,55 @@ class LibraryRow(QWidget):
         self.refresh()
 
 
+class CameraFolderRow(QWidget):
+    """FR-48: the folder a camera sends photos to over the network, watched while set."""
+
+    def __init__(self, bridge: Bridge) -> None:
+        super().__init__()
+        self.bridge = bridge
+        self.path = label("", "body")
+        self.path.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.choose = Button("Choose…")
+        self.choose.clicked.connect(self._choose)
+        self.clear = Button("Stop", "text")
+        self.clear.setToolTip("Stop watching this folder.")
+        self.clear.clicked.connect(lambda: self.set_folder(""))
+        self.note = label(
+            "Point Canon Image Transfer Utility or your FTP server at this folder. "
+            "Photos that arrive later, or come from the card afterwards, are never imported twice.",
+            "secondary",
+            wrap=True,
+        )
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        row.addWidget(self.path, 1)
+        row.addWidget(self.clear)
+        row.addWidget(self.choose)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(4)
+        column.addLayout(row)
+        column.addWidget(self.note)
+        self.refresh()
+
+    def refresh(self) -> None:
+        text = self.bridge.settings.watch_folder
+        shown = text if len(text) <= 46 else "…" + text[-45:]
+        self.path.setText(shown or "Off")
+        self.path.setToolTip(text)
+        self.clear.setVisible(bool(text))
+
+    def _choose(self) -> None:
+        start = self.bridge.settings.watch_folder or self.bridge.library()
+        folder = QFileDialog.getExistingDirectory(self, "Folder the camera sends to", start)
+        if folder:
+            self.set_folder(folder)
+
+    def set_folder(self, folder: str) -> None:
+        self.bridge.set_watch_folder(folder)
+        self.refresh()
+
+
 class SettingsDialog(QDialog):
     def __init__(self, bridge: Bridge, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -274,6 +323,7 @@ class SettingsDialog(QDialog):
             self.setMaximumHeight(screen.availableGeometry().height() - 48)
 
         self.library = LibraryRow(bridge)
+        self.camera = CameraFolderRow(bridge)
         self.services = {service: ServiceRow(bridge, service) for service in SERVICES}
         self.sound = Toggle(bridge.settings.card_sound)
         self.sound.setAccessibleName("Card-detected sound")
@@ -309,6 +359,9 @@ class SettingsDialog(QDialog):
         column.addSpacing(4)
         column.addWidget(label("Library folder", "heading"))
         column.addWidget(self.library)
+        column.addSpacing(8)
+        column.addWidget(label("Photos from the camera over Wi-Fi", "heading"))
+        column.addWidget(self.camera)
         column.addWidget(separator())
         column.addWidget(label("Services", "heading"))
         rows = QWidget()

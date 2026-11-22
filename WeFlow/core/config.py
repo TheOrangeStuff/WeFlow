@@ -124,6 +124,7 @@ class Settings:
     seen_version: str = ""  # the version whose "What's new" was last shown
     auto_eject: bool = False  # 1.10.0: eject a card once it is copied and verified
     speed: str = "medium"  # 1.12.0: "low", "medium" or "high" (see pipeline.speed_limits)
+    watch_folder: str = ""  # 1.21.0: folder a camera sends photos to; empty = off (FR-48)
 
 
 @dataclass

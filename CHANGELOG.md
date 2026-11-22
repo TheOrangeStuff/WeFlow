@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.21.0 — 2026-11-22
+
+- New: **photos from the camera over Wi-Fi**. In Settings, choose the folder Canon Image
+  Transfer Utility or your FTP server saves to, and WeFlow imports each photo as it arrives.
+- Photos that arrive late, or that you later copy from the card, are never imported or
+  uploaded twice.
+- Folder imports no longer ask you to keep a card in.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.20.0 — 2026-11-22
 
 - New: **Erase card**. Once a card says "Safe to remove", click Erase card, then

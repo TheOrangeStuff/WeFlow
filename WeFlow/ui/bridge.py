@@ -21,6 +21,7 @@ from WeFlow import __version__
 from WeFlow.core import (
     autostart,
     cards,
+    hotfolder,
     imaging,
     naming,
     secrets,
@@ -42,7 +43,14 @@ from WeFlow.core.config import (
     app_data_dir,
     default_library,
 )
-from WeFlow.core.events import BatchUpdated, CardDetected, CardRemoved, Event, Notice
+from WeFlow.core.events import (
+    BatchUpdated,
+    CardDetected,
+    CardRemoved,
+    Event,
+    FolderPhotos,
+    Notice,
+)
 from WeFlow.core.logs import recent_log, setup_logging
 from WeFlow.core.pipeline import ACTIVE_STATES, Pipeline, duration, plural, speed
 from WeFlow.core.state import Batch
@@ -87,6 +95,7 @@ __all__ = [
 log = logging.getLogger("WeFlow.ui")
 SERVICES = ("smugmug", "flickr")
 PREVIEW_EDGE = 900
+CAMERA_LABEL = "Camera"  # FR-48: the label of batches from the watched folder
 _BEGIN = {"smugmug": uploaders.smugmug_begin, "flickr": uploaders.flickr_begin}
 _FINISH = {"smugmug": uploaders.smugmug_finish, "flickr": uploaders.flickr_finish}
 
@@ -113,6 +122,7 @@ class Bridge(QObject):
     update_install_changed = Signal(str, int)
     quit_for_update = Signal()  # the installer is running: quit so it can replace WeFlow
     _deliver = Signal(object, object)
+    _folder_photos = Signal(object)  # FolderPhotos, handed to the UI thread
 
     def __init__(
         self,
@@ -130,6 +140,11 @@ class Bridge(QObject):
         self.pipeline = Pipeline(store, self._on_core_event, self._uploader_factory)
         self.watcher = cards.CardWatcher(self._on_core_event, watch_interval)
         self.watcher.set_paused(store.settings.paused)
+        # FR-48: photos the camera sends to a folder on this computer
+        self.folder_watcher = hotfolder.FolderWatcher(self._on_core_event)
+        self.folder_watcher.set_paused(store.settings.paused)
+        self._set_watch_folder(store.settings.watch_folder)
+        self._camera_waiting: list[FolderPhotos] = []  # arrived while no event was active
         self.pipeline.set_paced(store.settings.paced)
         self.pipeline.set_speed(store.settings.speed)
         self.connected: dict[str, bool] = dict.fromkeys(SERVICES, False)
@@ -145,6 +160,7 @@ class Bridge(QObject):
         self._update_timer.setInterval(updates.CHECK_EVERY_HOURS * 3_600_000)
         self._update_timer.timeout.connect(self.check_for_updates)
         self._deliver.connect(self._on_deliver, Qt.ConnectionType.QueuedConnection)
+        self._folder_photos.connect(self._on_folder_photos, Qt.ConnectionType.QueuedConnection)
 
     # ------------------------------------------------------------- lifecycle
     def start(self) -> None:
@@ -152,6 +168,7 @@ class Bridge(QObject):
         self._queue(self.pipeline.resume)
         self.refresh_services()
         self.watcher.start()
+        self.folder_watcher.start()
 
     def shutdown(self) -> None:
         if self._closed:
@@ -159,6 +176,7 @@ class Bridge(QObject):
         self._closed = True
         self._update_timer.stop()
         self.watcher.stop()
+        self.folder_watcher.stop()
         self.pipeline.stop()
         self._io.shutdown(wait=True)
         self._jobs.shutdown(wait=False, cancel_futures=True)
@@ -216,8 +234,37 @@ class Bridge(QObject):
             self.card_detected.emit(event.path, event.label)
         elif isinstance(event, CardRemoved):
             self.card_removed.emit(event.path)
+        elif isinstance(event, FolderPhotos):
+            self._folder_photos.emit(event)
         elif isinstance(event, Notice):
             self.notice.emit(event.level, event.message, event.batch_id)
+
+    def _on_folder_photos(self, photos: FolderPhotos) -> None:
+        """FR-48: import what the camera sent. With no event, wait for one (as FR-11)."""
+        if self._closed:
+            return
+        if self.active() is None:
+            self._camera_waiting.append(photos)
+            self.notice.emit(
+                "info", "New photos from the camera. Choose an event to import them.", None
+            )
+            return
+        files = [Path(p) for p in photos.paths]
+        self.submit(photos.folder, CAMERA_LABEL, False, files=files)
+
+    def _set_watch_folder(self, folder: str) -> None:
+        self.folder_watcher.set_folder(Path(folder) if folder else None)
+
+    def watching(self) -> str:
+        """The watched folder's name while WeFlow is watching it, else ""."""
+        folder = self.settings.watch_folder
+        if not folder or self.settings.paused:
+            return ""
+        return Path(folder).name or folder
+
+    def set_watch_folder(self, folder: str) -> None:
+        self._set_watch_folder(folder)
+        self.update_settings(watch_folder=folder)
 
     # ---------------------------------------------------------------- events
     @property
@@ -233,6 +280,12 @@ class Bridge(QObject):
     def set_active(self, event_id: str) -> None:
         self.store.set_active(event_id)
         self.events_changed.emit()
+        self._import_waiting_camera()
+
+    def _import_waiting_camera(self) -> None:
+        waiting, self._camera_waiting = self._camera_waiting, []
+        for photos in waiting:
+            self._on_folder_photos(photos)
 
     def draft_event(self) -> Profile:
         return self.store.draft_event()
@@ -245,6 +298,7 @@ class Bridge(QObject):
         before = self.store.get(event.id)
         if before is None:
             saved = self.store.add_event(event, activate=True)
+            self._import_waiting_camera()
         else:
             saved = self.store.update_event(event)
             if saved.makes_large and not before.makes_large:
@@ -282,12 +336,19 @@ class Bridge(QObject):
         return True
 
     # ------------------------------------------------------------------ work
-    def submit(self, source: str, label: str, is_card: bool, event_id: str = "") -> bool:
+    def submit(
+        self,
+        source: str,
+        label: str,
+        is_card: bool,
+        event_id: str = "",
+        files: list[Path] | None = None,
+    ) -> bool:
         """Start importing ``source`` into the active event (or the one given)."""
         event = self.store.get(event_id) if event_id else self.active()
         if event is None:
             return False
-        self._queue(lambda: self.pipeline.submit(Path(source), event, label, is_card))
+        self._queue(lambda: self.pipeline.submit(Path(source), event, label, is_card, files))
         return True
 
     def release(self, event_id: str | None) -> None:
@@ -335,6 +396,7 @@ class Bridge(QObject):
 
     def set_paused(self, paused: bool) -> None:
         self.watcher.set_paused(paused)
+        self.folder_watcher.set_paused(paused)
         self.store.update_settings(paused=paused)
         self.settings_changed.emit()
 

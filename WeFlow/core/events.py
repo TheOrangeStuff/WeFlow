@@ -30,11 +30,19 @@ class CardRemoved:
 
 
 @dataclass(frozen=True)
+class FolderPhotos:
+    """New photos have finished arriving in the watched folder (FR-48)."""
+
+    folder: str
+    paths: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Notice:
     level: NoticeLevel
     message: str
     batch_id: int | None = None
 
 
-Event = BatchUpdated | CardDetected | CardRemoved | Notice
+Event = BatchUpdated | CardDetected | CardRemoved | FolderPhotos | Notice
 Emit = Callable[[Event], None]

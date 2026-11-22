@@ -399,3 +399,25 @@ def test_fr47_erase_card_needs_two_clicks(  # type: ignore[no-untyped-def]
     qtbot.waitUntil(lambda: window.panel.erase.text() == "Erase card", timeout=10000)
     assert ingest.list_jpegs(card) == []
     assert window.notice_bar.text.text() == "Erased 8 photos from the card."
+
+
+def test_fr48_camera_folder_imports_and_uploads(
+    qtbot, window, bridge, event, store, fake_uploader, tmp_path
+) -> None:  # type: ignore[no-untyped-def]
+    import os
+    import time
+
+    use_flickr(store, event)
+    folder = tmp_path / "camera"
+    make_card(folder, count=4)
+    then = time.time() - 10
+    for photo in folder.rglob("*"):
+        os.utime(photo, (then, then))
+    bridge.set_watch_folder(str(folder))
+    assert "Watching camera" in window.panel.subline.text()
+    for _ in range(2):
+        bridge.folder_watcher.poll()
+    qtbot.waitUntil(lambda: window.panel.state == "done", timeout=10000)
+    assert window.panel.headline.text() == "All done"
+    assert len(fake_uploader.uploads) == 3  # 4 files, one a duplicate (FR-14)
+    assert all(b.live and b.label == "Camera" for b in bridge.snapshot())

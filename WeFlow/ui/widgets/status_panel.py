@@ -96,11 +96,19 @@ def copied_text(batch: Batch) -> str:
 
 
 def view_for(
-    batch: Batch | None, *, event_name: str = "", paused: bool = False, card_present: bool = False
+    batch: Batch | None,
+    *,
+    event_name: str = "",
+    paused: bool = False,
+    card_present: bool = False,
+    watching: str = "",
 ) -> PanelView:
     """Map the most recent batch (or none) to what the panel should show. All three
-    stages follow this batch; the main window points them at other cards when needed."""
-    view = _headline_for(batch, event_name=event_name, paused=paused, card_present=card_present)
+    stages follow this batch; the main window points them at other cards when needed.
+    ``watching`` names the folder the camera sends photos to (FR-48), if any."""
+    view = _headline_for(
+        batch, event_name=event_name, paused=paused, card_present=card_present, watching=watching
+    )
     if batch is None:
         return view
     stages = stages_for(batch, card_in=batch.is_card and card_present)
@@ -108,26 +116,38 @@ def view_for(
 
 
 def _headline_for(
-    batch: Batch | None, *, event_name: str = "", paused: bool = False, card_present: bool = False
+    batch: Batch | None,
+    *,
+    event_name: str = "",
+    paused: bool = False,
+    card_present: bool = False,
+    watching: str = "",
 ) -> PanelView:
     if batch is None:
         if paused:
             return PanelView("paused", "Paused", "Card watching is off")
         target = f"Photos go to {event_name}" if event_name else "Choose an event to begin"
+        if watching:
+            target = f"Watching {watching} · {target}"
         return PanelView("idle", "Insert a card", target)
 
     common = {"batch_id": batch.id, "event_id": batch.event_id, "source": batch.source}
     count = batch.copied
     if batch.state == "error":
         reason = batch.error or "The copy failed."
-        if "Re-insert" not in reason:
+        if batch.is_card and "Re-insert" not in reason:
             reason = f"{reason} Re-insert the card to try again."
         return PanelView("copy_error", "Don't remove yet — copy failed", reason, **common)
     if batch.state == "copying":
         seen = batch.copied + batch.skipped
         sub = copy_line(batch) if batch.total else "Reading the card…"
         return PanelView(
-            "copying", "Copying — keep card in", sub, 0, _fraction(seen, batch.total), **common
+            "copying",
+            "Copying — keep card in" if batch.is_card else "Copying",
+            sub,
+            0,
+            _fraction(seen, batch.total),
+            **common,
         )
 
     # From here on every file is copied and verified.

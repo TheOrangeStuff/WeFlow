@@ -163,6 +163,11 @@ Each requirement has an ID. Reference these IDs in commit messages and test name
   - It deletes only JPEGs that ingest would import whose checksum, read again from the card, matches a photo in the batch's event, and whose copy on this computer still has that checksum. Other files (RAW, video, dotfiles) and all folders stay. Nothing is formatted.
   - Never for a folder import, an unverified batch, or while that card is copying or ejecting. A locked card says so.
 - **FR-18** "Import folder…" runs the same pipeline on any folder.
+- **FR-48** *(1.21.0)* **Photos from the camera over Wi-Fi**: Settings › "Photos from the camera over Wi-Fi" (`Settings.watch_folder`, empty = off) names a folder that Canon Image Transfer Utility, or the camera's FTP transfer, saves into. `core/hotfolder.py` polls it every 2 s.
+  - A JPEG is imported once it is complete (ends with `FF D9`), at least 2 s old and unchanged since the last poll. Photos that finish while another is still arriving wait for it, so a burst becomes one batch (at most 50).
+  - Each batch is a folder import of just those photos (`Batch.live`, label "Camera"): no "Safe to remove", no Erase. FR-14 means photos sent live and then found on the card are imported and uploaded once.
+  - The folder is only read. Pause stops it too. With no active event, the photos wait until one is chosen.
+  - Only the newest finished "Camera" batch shows in the list, and finished ones don't pop up a notification.
 
 ### 5.3 Processing
 - **FR-20** Auto white balance: gray-world on mid-tones with saturated pixels excluded (v0.1 `wb_gains`).
@@ -289,7 +294,7 @@ Default size 960×720; minimum 760×640 *(1.14.0; was 560×760 / 480×640)*. 32 
 
 | State | Background | Headline (`type-display`, 28 pt) | Subline | Extras |
 |---|---|---|---|---|
-| Idle | `surface-2` | "Insert a card" | "Photos go to <event>" | Stages all pending |
+| Idle | `surface-2` | "Insert a card" | "Photos go to <event>"; *(1.21.0)* "Watching <folder> · Photos go to <event>" while FR-48 is on | Stages all pending |
 | Paused | `surface-2` | "Paused" | "Card watching is off" | Resume button |
 | Copying | `warn-tint` | "Copying — keep card in" | "<n> of <total> photos" | Transfer active |
 | **Safe** | `good-tint` + 2 px `good` border | "**Safe to remove**" | "<label> · <n> photos copied and verified" | **Eject** button (outline, `good`); stages continue (Process/Upload) |
@@ -437,7 +442,6 @@ After each milestone:
 - RAW files and RAW+JPEG pairs.
 - Culling or per-photo editing.
 - Destinations other than SmugMug and Flickr.
-- Wireless or tethered transfer.
 - Creating SmugMug galleries from the app.
 - Lightroom catalog sync.
 - Uploading to two destinations at once.

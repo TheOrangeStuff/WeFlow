@@ -215,13 +215,16 @@ class MainWindow(QMainWindow):
 
     # ----------------------------------------------------------------- state
     def _visible_batches(self) -> list[Batch]:
-        """Newest first. Finished rows from earlier app sessions stay hidden."""
+        """Newest first. Finished rows from earlier app sessions stay hidden, and of the
+        finished batches the camera sent (FR-48) only the newest shows."""
         keep = [
             b
             for b in self._batches.values()
             if not (b.previous_session and b.state in ("done", "error"))
         ]
-        return sorted(keep, key=lambda b: b.started, reverse=True)
+        keep.sort(key=lambda b: b.started, reverse=True)
+        newest_live = next((b.id for b in keep if b.live), None)
+        return [b for b in keep if not (b.live and b.state == "done" and b.id != newest_live)]
 
     def refresh(self) -> None:
         active = self.bridge.active()
@@ -235,6 +238,7 @@ class MainWindow(QMainWindow):
             event_name=active.name if active else "",
             paused=paused,
             card_present=card_in,
+            watching=self.bridge.watching(),
         )
         if current is not None:
             view = replace(view, stages=self._stages(current, visible, card_in))
@@ -381,7 +385,8 @@ class MainWindow(QMainWindow):
         previous = self._batches.get(batch.id)
         self._batches[batch.id] = batch
         self._maybe_auto_eject(batch, previous)
-        if batch.state == "done" and previous is not None and previous.state != "done":
+        finished = batch.state == "done" and previous is not None and previous.state != "done"
+        if finished and not batch.live:  # FR-48: no pop-up for every shot the camera sends
             self.notify.emit("done", "All done", f"{batch.label}: {self._done_text(batch)}")
         self.refresh()
 

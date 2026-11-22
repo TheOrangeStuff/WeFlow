@@ -685,3 +685,27 @@ machine (2 cores / 4 threads) with 24 MP, 12 MB JPEGs; three things held it back
   "already imported" are erased too.
 - **With "Eject the card when it's copied" on**, the card is gone before the button can
   be used. That is fine: someone who wants to erase cards can turn auto-eject off.
+
+## 1.21.0 — Photos from the camera over Wi-Fi (FR-48)
+
+- **The owner asked for photos to reach WeFlow as they're taken.** SPEC §11 had
+  "Wireless or tethered transfer" out of scope; it is now FR-48.
+- **A watched folder, not the Canon SDK or a built-in FTP server.** Canon's EDSDK needs a
+  developer sign-up and its licence doesn't suit a public repo or our installers. A
+  server inside WeFlow would mean a network port, a password and firewall prompts. Canon
+  Image Transfer Utility and the camera's own FTP transfer can already save into a
+  folder, so WeFlow only has to watch one, and it works with any camera that can.
+- **"Complete" means the JPEG end marker plus two quiet polls.** FTP and network
+  transfers write files gradually; a size check alone can catch a pause mid-file. A
+  broken file that stops changing for 30 s no longer holds the others back.
+- **One small batch per burst, shown as one row.** One batch per photo would fill the
+  list during a shoot, and one never-ending batch would never be "done". Each burst is a
+  normal folder batch; the list keeps only the newest finished one. `Batch.live` is a
+  new field with a default, so older versions still read the state file.
+- **The batch's file list is kept in memory only.** After a restart the watcher reports
+  the folder again and FR-14 skips what is already in, so nothing is lost or doubled.
+- **Leaving Wi-Fi range is up to Canon's tools.** WeFlow takes photos whenever they
+  arrive. If the camera never resends some, inserting the card afterwards fills the
+  gaps without duplicates.
+- Folder imports no longer say "keep card in" or "Re-insert the card", since no card is
+  involved.
