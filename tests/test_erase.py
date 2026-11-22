@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-import stat
+import errno
+import os
 from pathlib import Path
+
+import pytest
 
 from tests.conftest import PipelineFactory, Recorder
 from tests.fixtures.make_card import make_card
@@ -43,17 +46,17 @@ def test_fr47_photos_not_copied_stay_on_the_card(card: Path) -> None:
     assert result.ok and result.erased == 0 and ingest.list_jpegs(card) == before
 
 
-def test_fr47_locked_card_says_so(card: Path, tmp_path: Path) -> None:
+def test_fr47_locked_card_says_so(
+    card: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     copies = copy_all(card, tmp_path / "originals")
-    folders = [p for p in card.rglob("*") if p.is_dir()]
-    for folder in folders:
-        folder.chmod(stat.S_IREAD | stat.S_IEXEC)
-    try:
-        result = erase.erase_copied(card, copies)
-    finally:
-        for folder in folders:
-            folder.chmod(stat.S_IRWXU)
-    assert not result.ok and result.message == erase.LOCKED
+
+    def write_protected(path: object) -> None:  # what a locked card answers
+        raise OSError(errno.EROFS, "Read-only file system")
+
+    monkeypatch.setattr(os, "remove", write_protected)
+    result = erase.erase_copied(card, copies)
+    assert not result.ok and result.message == erase.LOCKED and result.erased == 0
 
 
 def test_fr47_pipeline_erases_only_after_safe(
