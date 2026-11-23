@@ -85,8 +85,8 @@ def slugify(name: str) -> str:
 
 
 def originals_folder_name(name: str) -> str:
-    """The originals folder for an event called ``name`` (1.16.0): the name itself,
-    made safe on macOS and Windows. Spaces and capitals are kept."""
+    """The originals folder for an event whose main folder is ``name``: the same name
+    (1.22.0; 1.16.0-1.21.0 used the event name), made safe on macOS and Windows."""
     folder = re.sub(r"\s+", " ", _UNSAFE_FOLDER.sub("", name)).strip(". ")
     if not folder:
         return LEGACY_ORIGINALS
@@ -405,7 +405,7 @@ class Store:
                 raise ValueError("event already exists")
             saved = replace(event, name=self.unique_name(event.name.strip()))
             saved.folder = self._unique_folder(slugify(saved.name))
-            saved.originals_folder = originals_folder_name(saved.name)
+            saved.originals_folder = originals_folder_name(saved.folder)
             self._events[saved.id] = saved
             if activate:
                 self.settings.active_event_id = saved.id

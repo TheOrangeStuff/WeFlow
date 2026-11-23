@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.22.0 — 2026-11-22
+
+- New: **Skip** next to the 15 second countdown when a card goes in, to start copying
+  straight away.
+- New events keep their originals in a folder with the same name as the event's main
+  folder. Existing events keep their current folders.
+- Your events, settings and sign-ins carry over unchanged.
+
 ## 1.21.0 — 2026-11-22
 
 - New: **photos from the camera over Wi-Fi**. In Settings, choose the folder Canon Image

@@ -709,3 +709,13 @@ machine (2 cores / 4 threads) with 24 MP, 12 MB JPEGs; three things held it back
   gaps without duplicates.
 - Folder imports no longer say "keep card in" or "Re-insert the card", since no card is
   involved.
+
+## 1.22.0 — Skip the card countdown; originals folder matches the event folder
+
+- **Skip** sits beside Cancel on the card notice (FR-11) and starts the import at once,
+  the same path the 15 s timer takes. It reuses the bar's action button, so the card
+  notice still has only two buttons.
+- **The originals folder now takes the event's main folder name** (e.g.
+  `Smith-Wedding-2026-11/Smith-Wedding-2026-11/`), as asked, instead of the spaced event
+  name used since 1.16.0. Only new events: existing events' folders are frozen and never
+  moved, for the same reasons as in 1.16.0.

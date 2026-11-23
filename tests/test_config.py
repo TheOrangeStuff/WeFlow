@@ -261,14 +261,15 @@ def test_nfr06_refused_keychain_still_connects(monkeypatch: pytest.MonkeyPatch) 
     assert "KEY" in store[secrets.SPARE_ENTRY]
 
 
-def test_originals_folder_is_the_event_name_and_never_changes(store: Store) -> None:
+def test_originals_folder_matches_the_event_folder_and_never_changes(store: Store) -> None:
     from WeFlow.core.config import originals_folder_name
 
     event = store.create_event("Smith Wedding: 2026/11")
-    assert event.originals_folder == "Smith Wedding 202611"
+    assert event.originals_folder == event.folder == "Smith-Wedding-2026-11"
     event.name = "Renamed"
-    assert store.update_event(event).originals_dir == "Smith Wedding 202611"
-    assert store.duplicate_event(event.id).originals_dir == "Renamed copy"
+    assert store.update_event(event).originals_dir == "Smith-Wedding-2026-11"
+    assert store.duplicate_event(event.id).originals_dir == "Renamed-copy"
+    assert store.create_event("Smith Wedding 2026 11").originals_dir == "Smith-Wedding-2026-11-2"
     assert originals_folder_name("Processed") == "Processed originals"
     assert originals_folder_name("CON") == "CON originals"
     assert Profile().originals_dir == "originals"  # events made before 1.16.0

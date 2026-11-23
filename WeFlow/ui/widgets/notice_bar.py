@@ -1,6 +1,6 @@
 """A non-modal bar above the status panel.
 
-Used for the card notice ("Card X → Event", Cancel, auto-start after 15 s; FR-11),
+Used for the card notice ("Card X → Event", Skip, Cancel, auto-start after 15 s; FR-11),
 for short results such as an eject failure, and to offer a newer version. The
 update offer has the lowest priority: it waits behind the other two.
 """
@@ -40,7 +40,7 @@ class NoticeBar(QFrame):
         self.text = label("", "body")
         self.detail = label("", "secondary")
         self.action = Button("Download", "outline")
-        self.action.clicked.connect(self._download)
+        self.action.clicked.connect(self._action)
         self.action.hide()
         self.cancel = Button("Cancel", "text")
         self.cancel.clicked.connect(self._cancel)
@@ -70,7 +70,9 @@ class NoticeBar(QFrame):
         self._remaining = self.countdown_ms
         self.icon.set_icon("card-sim", "text")
         self.text.setText(f"Card {card_label} → {event_name}")
-        self.action.hide()
+        self.action.setText("Skip")
+        self.action.setToolTip("Start copying now")
+        self.action.show()
         self.cancel.setText("Cancel")
         self.cancel.setToolTip("")
         self.cancel.show()
@@ -111,7 +113,7 @@ class NoticeBar(QFrame):
         self._rest()
 
     def offering_update(self) -> bool:
-        return self.action.isVisibleTo(self)
+        return self._card is None and self.action.isVisibleTo(self)
 
     def _rest(self) -> None:
         """Nothing urgent is showing: fall back to the update offer, or hide."""
@@ -133,11 +135,19 @@ class NoticeBar(QFrame):
         self.text.setText(f"WeFlow {self._update} is available")
         self.detail.setText("")
         self.action.setText(self._update_label)
+        self.action.setToolTip("")
         self.action.show()
         self.cancel.setText("Skip")
         self.cancel.setToolTip("Don't offer this version again")
         self.cancel.show()
         self.show()
+
+    def _action(self) -> None:
+        """Skip on a card countdown starts it now; otherwise it accepts the update."""
+        if self._card is not None:
+            self.start_now()
+        else:
+            self._download()
 
     def _download(self) -> None:
         self._update = ""
